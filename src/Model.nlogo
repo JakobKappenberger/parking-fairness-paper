@@ -2002,26 +2002,6 @@ pop-mean-income
 €
 HORIZONTAL
 
-PLOT
-1968
-781
-2432
-1164
-City Finances
-Time
-Euro
-0.0
-7200.0
-0.0
-10.0
-true
-true
-"" ""
-PENS
-"Income" 1.0 0 -16777216 true "" "plot city-income"
-"Lost Revenue" 1.0 0 -2674135 true "" "plot city-loss"
-"Fines paid" 1.0 0 -13791810 true "" "plot total-fines"
-
 TEXTBOX
 50
 588
@@ -2260,26 +2240,6 @@ How high should the fines be in terms of the original hourly fee?
 0.0
 1
 
-PLOT
-1958
-419
-2432
-716
-Fee as Share of Monthly Income per Income Class
-Time
-%
-0.0
-7200.0
-0.0
-2.0
-true
-true
-"" ""
-PENS
-"High Income" 1.0 0 -16777216 true "" "if count cars with [parked? = true and income-grade = 2] != 0 [plot mean [fee-income-share] of cars with [parked? = true and income-grade = 2] * 100]"
-"Middle Income" 1.0 0 -13791810 true "" "plot mean [fee-income-share] of cars with [parked? = true and income-grade = 1] * 100"
-"Low Income" 1.0 0 -2674135 true "" "if count cars with [parked? = true and income-grade = 0] != 0 [plot mean [fee-income-share] of cars with [parked? = true and income-grade = 0] * 100]"
-
 MONITOR
 1841
 147
@@ -2320,16 +2280,6 @@ PENS
 "High Income" 1.0 0 -16777216 true "" "ifelse count cars-on yellow-lot != 0 [plot (count cars with [([pcolor] of patch-here = [255.0 254.997195 102.02397]) and income-grade = 2] / count cars-on yellow-lot) * 100] [plot 0]"
 "Middle Income" 1.0 0 -13791810 true "" "ifelse count cars-on yellow-lot != 0 [plot (count cars with [([pcolor] of patch-here = [255.0 254.997195 102.02397]) and income-grade = 1] / count cars-on yellow-lot) * 100] [plot 0]"
 "Low Income" 1.0 0 -2674135 true "" "ifelse count cars-on yellow-lot != 0 [plot (count cars with [([pcolor] of patch-here = [255.0 254.997195 102.02397]) and income-grade = 0] / count cars-on yellow-lot) * 100][plot 0]"
-
-TEXTBOX
-2029
-747
-2333
-791
-Traffic and Financial Indicators
-20
-0.0
-1
 
 TEXTBOX
 34
@@ -2554,6 +2504,86 @@ group-pricing
 0
 1
 -1000
+
+PLOT
+1961
+419
+2207
+590
+Group Fees Yellow Lot
+NIL
+NIL
+0.0
+10.0
+0.0
+10.0
+true
+true
+"set-plot-background-color [255.0 254.997195 102.02397]" ""
+PENS
+"Low Income" 1.0 0 -2674135 true "" "if group-pricing [plot item 0 [group-fees] of one-of yellow-lot]"
+"Middle Income" 1.0 0 -13791810 true "" "if group-pricing [plot item 1 [group-fees] of one-of yellow-lot]"
+"High Income" 1.0 0 -16777216 true "" "if group-pricing [plot item 2 [group-fees] of one-of yellow-lot]"
+
+PLOT
+1963
+597
+2213
+753
+Group Fees Green Lot
+NIL
+NIL
+0.0
+10.0
+0.0
+10.0
+true
+true
+"set-plot-background-color [122.92632 173.61190499999998 116.145105]" ""
+PENS
+"Low Income" 1.0 0 -2674135 true "" "if group-pricing [plot item 0 [group-fees] of one-of green-lot]"
+"Middle Income" 1.0 0 -13791810 true "" "if group-pricing [plot item 1 [group-fees] of one-of green-lot]"
+"High Income" 1.0 0 -16777216 true "" "if group-pricing [plot item 2 [group-fees] of one-of green-lot]"
+
+PLOT
+1959
+761
+2214
+906
+Group Fees Teal Lot
+NIL
+NIL
+0.0
+10.0
+0.0
+10.0
+true
+true
+"set-plot-background-color [57.189615 106.713675 147.774285]" ""
+PENS
+"Low Income" 1.0 0 -2674135 true "" "if group-pricing [plot item 0 [group-fees] of one-of teal-lot]"
+"Middle Income" 1.0 0 -13791810 true "" "if group-pricing [plot item 1 [group-fees] of one-of teal-lot]"
+"High income" 1.0 0 -16777216 true "" "if group-pricing [plot item 2 [group-fees] of one-of teal-lot]"
+
+PLOT
+1959
+919
+2215
+1070
+Group Fees Blue Lot
+NIL
+NIL
+0.0
+10.0
+0.0
+10.0
+true
+true
+"set-plot-background-color [25.867455 51.02805 178.54946999999999]" ""
+PENS
+"Low Income" 1.0 0 -2674135 true "" "if group-pricing [plot item 0 [group-fees] of one-of blue-lot]"
+"Middle Income" 1.0 0 -13791810 true "" "if group-pricing [plot item 1 [group-fees] of one-of blue-lot]"
+"High Income" 1.0 0 -16777216 true "" "if group-pricing [plot item 2 [group-fees] of one-of blue-lot]"
 
 @#$#@#$#@
 # WHAT IS IT?
