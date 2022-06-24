@@ -133,7 +133,7 @@ patches-own
   my-phase        ;; the phase for the intersection.  -1 for non-intersection patches.
   car?            ;; whether there is a car on this patch
   fee             ;; price of parking here
-  income-fees     ;;income-specific prices of parking
+  group-fees     ;;income-specific prices of parking
   lot-id          ;; id of lot
   center-distance ;; distance to center of map
   garage?         ;; true for private garages
@@ -469,25 +469,25 @@ to setup-lots;;intialize dynamic lots
   ask yellow-lot [
     set pcolor yellow-c
     set fee yellow-lot-fee
-    if income-specific-pricing [set income-fees (list yellow-lot-fee yellow-lot-fee yellow-lot-fee)]
+    if group-pricing [set group-fees (list yellow-lot-fee yellow-lot-fee yellow-lot-fee)]
   ]
   let green-c [122.92632 173.61190499999998 116.145105]
   ask green-lot [
     set pcolor green-c
     set fee green-lot-fee
-    if income-specific-pricing [set income-fees (list green-lot-fee green-lot-fee green-lot-fee)]
+    if group-pricing [set group-fees (list green-lot-fee green-lot-fee green-lot-fee)]
   ]
   let teal-c [57.189615 106.713675 147.774285]
   ask teal-lot [
     set pcolor teal-c
     set fee teal-lot-fee
-    if income-specific-pricing [set income-fees (list teal-lot-fee teal-lot-fee teal-lot-fee)]
+    if group-pricing [set group-fees (list teal-lot-fee teal-lot-fee teal-lot-fee)]
   ]
   let blue-c 	[25.867455 51.02805 178.54946999999999]
   ask blue-lot [
     set pcolor blue-c
     set fee blue-lot-fee
-    if income-specific-pricing [set income-fees (list blue-lot-fee blue-lot-fee blue-lot-fee)]
+    if group-pricing [set group-fees (list blue-lot-fee blue-lot-fee blue-lot-fee)]
   ]
 
   set lot-colors (list yellow-c green-c teal-c blue-c) ;; will be used to identify the different zones
@@ -1298,8 +1298,8 @@ to park-car ;;turtle procedure
       ]
       if ((member? (patch-at a b) lots) and (not any? cars-at a b))[
         let parking-fee 0
-        ifelse income-specific-pricing
-        [set parking-fee item income-grade [income-fees] of patch-at a b ]
+        ifelse group-pricing
+        [set parking-fee item income-grade [group-fees] of patch-at a b ]
         [set parking-fee [fee] of patch-at a b]  ;; compute fee
                                                  ;; check for parking offenders
         let fine-probability compute-fine-prob park-time
@@ -1537,8 +1537,12 @@ to change-fee [lot fee-change]
 end
 
 ;; for changing prices of income groups
-to change-income-fees [lot fee-change]
-  ask lot [set income-fees (map [ [a b] -> a + b] income-fees fee-change)]
+to change-group-fees [lot fee-change]
+  ask lot [set group-fees (map [ [a b] -> a + b] group-fees fee-change)]
+end
+
+to change-group-fees-free [lot new-fees]
+  ask lot [set group-fees new-fees]
 end
 
 ;; for free price setting of RL agent
@@ -2459,7 +2463,7 @@ parking-cars-percentage
 parking-cars-percentage
 0
 100
--1860.2770840000012
+77.73591064639997
 1
 1
 %
@@ -2545,8 +2549,8 @@ SWITCH
 295
 355
 328
-income-specific-pricing
-income-specific-pricing
+group-pricing
+group-pricing
 0
 1
 -1000
