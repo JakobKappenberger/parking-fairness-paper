@@ -220,6 +220,7 @@ class Runner(object):
 
         for n, environment in enumerate(environments[1:], start=1):
             assert isinstance(environment, Environment) == self.is_environment_external
+            env_kwargs['eval'] = True if n == len(environments) - 1 and evaluation else False
             environment = Environment.create(
                 environment=environment,
                 max_episode_timesteps=max_episode_timesteps,
@@ -832,7 +833,6 @@ class Runner(object):
             )
             self.evaluation_agent_second += time.time() - agent_start
 
-        print(actions)
         self.environments[-1].start_execute(actions=actions)
 
         # Update episode statistics
