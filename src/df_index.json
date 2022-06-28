@@ -74,5 +74,41 @@
       "share_p_middle",
       "share_p_low"
     ]
+  },
+  "group_fees_yellow": {
+    "title": "\"Group Fees Yellow Lot\"",
+    "offset": 10,
+    "cols": [
+      "fee_yellow_low",
+      "fee_yellow_middle",
+      "fee_yellow_high"
+    ]
+  },
+  "group_fees_green": {
+    "title": "\"Group Fees Green Lot\"",
+    "offset": 10,
+    "cols": [
+      "fee_green_low",
+      "fee_green_middle",
+      "fee_green_high"
+    ]
+  },
+  "group_fees_teal": {
+    "title": "\"Group Fees Teal Lot\"",
+    "offset": 10,
+    "cols": [
+      "fee_teal_low",
+      "fee_teal_middle",
+      "fee_teal_high"
+    ]
+  },
+  "group_fees_blue": {
+    "title": "\"Group Fees Blue Lot\"",
+    "offset": 10,
+    "cols": [
+      "fee_blue_low",
+      "fee_blue_middle",
+      "fee_blue_high"
+    ]
   }
 }
