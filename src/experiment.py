@@ -9,9 +9,9 @@ import pandas as pd
 import seaborn as sns
 from cmcrameri import cm
 
-from custom_environment import CustomEnvironment
-from external.tensorforce.execution import Runner
-from util import label_episodes, delete_unused_episodes
+from src.custom_environment import CustomEnvironment
+from src.external.tensorforce.execution import Runner
+from src.util import label_episodes, delete_unused_episodes
 
 sns.set_style("dark")
 sns.set_context("paper")
@@ -27,11 +27,13 @@ class Experiment:
         sync_episodes: bool = False,
         document: bool = True,
         adjust_free: bool = False,
+        group_pricing: bool = False,
         num_parallel: int = 1,
         reward_key: str = "occupancy",
         checkpoint: str = None,
         eval: bool = False,
         zip: bool = False,
+        test: bool = False,
         model_size: str = "training",
         nl_path: str = None,
         gui: bool = False,
@@ -46,6 +48,7 @@ class Experiment:
         :param reward_key: Key to choose reward function.
         :param eval: Whether or not to use one core for evaluation (necessary for evaluation phase).
         :param zip: Whether or not to zip the experiment directory.
+        :param test:
         :param model_size: Model size to run experiments with, either "training" or "evaluation".
         :param nl_path: Path to NetLogo Installation (for Linux users)
         :param gui: Whether or not NetLogo UI is shown during episodes.
@@ -57,6 +60,7 @@ class Experiment:
         self.zip = zip
         self.document = document
         self.num_parallel = num_parallel
+        assert not eval or self.num_parallel > 1, "Need parallel execution for evaluation mode."
         # Check if checkpoint is given (resume if given)
         if checkpoint is not None:
             self.resume_checkpoint = True
@@ -66,7 +70,7 @@ class Experiment:
             self.timestamp = datetime.now().strftime("%y%m-%d-%H%M")
 
         self.outpath = (
-            Path(".").absolute().parent / "Experiments" / reward_key / self.timestamp
+            Path(".").absolute().parent / "results" / reward_key / self.timestamp
         )
         # Create directory (if it does not exist yet)
         self.outpath.mkdir(parents=True, exist_ok=True)
@@ -75,9 +79,11 @@ class Experiment:
             "reward_key": reward_key,
             "document": self.document,
             "adjust_free": adjust_free,
+            "group_pricing": group_pricing,
             "model_size": model_size,
             "nl_path": nl_path,
             "gui": gui,
+            "test": test,
         }
 
         if self.resume_checkpoint:
