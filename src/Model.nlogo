@@ -1452,10 +1452,11 @@ to compute-outcome
       if expected-fine != -99 [set outcome outcome - expected-fine]
     ]
     let min-outcome min [outcome] of cars with [outcome != -99]
-    let max-outcome max [outcome] of cars with [outcome != -99]
-    let outcome-range max-outcome - min-outcome
+    ;let max-outcome max [outcome] of cars with [outcome != -99]
+    ;let outcome-range max-outcome - min-outcome
     ask cars with [outcome != -99] [
-      set outcome (outcome - min-outcome) / outcome-range
+      ;set outcome (outcome - min-outcome) / outcome-range
+      set outcome outcome + abs min-outcome
     ]
   ]
 end
