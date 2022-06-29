@@ -43,9 +43,11 @@ class CustomEnvironment(Environment):
         nl_path: str = None,
         gui: bool = False,
         eval: bool = False,
+        test: bool = False,
     ):
         """
         Wrapper-Class to interact with NetLogo parking simulations.
+
         :param timestamp: Timestamp of episode.
         :param reward_key: Key to choose reward function
         :param document: Boolean to control whether individual episode results are saved.
@@ -53,6 +55,9 @@ class CustomEnvironment(Environment):
         :param model_size: Model size to run experiments with, either "training" or "evaluation".
         :param nl_path: Path to NetLogo Installation (for Linux users)
         :param gui: Whether or not NetLogo UI is shown during episodes.
+        :param group_pricing:
+        :param eval:
+        :param test:
         """
         super().__init__()
         self.timestamp = timestamp
@@ -67,6 +72,7 @@ class CustomEnvironment(Environment):
         self.adjust_free = adjust_free
         self.group_pricing = group_pricing
         self.eval = eval
+        self.test = test
         self.reward_function = REWARD_FUNCTIONS[reward_key]
         self.reward_sum = 0
         # Load model parameters
@@ -130,17 +136,17 @@ class CustomEnvironment(Environment):
         self.nl.command(
             f"resize-world {-max_x_cor} {max_x_cor} {-max_y_cor} {max_y_cor}"
         )
-        self.nl.command(f'set num-cars {model_config[model_size]["num_cars"]}')
-        self.nl.command(f'set num-garages {model_config[model_size]["num_garages"]}')
-        self.nl.command(
-            f'set demand-curve-intercept {model_config[model_size]["demand_curve_intercept"]}'
-        )
-        self.nl.command(
-            f'set lot-distribution-percentage {model_config[model_size]["lot_distribution_percentage"]}'
-        )
-        self.nl.command(
-            f'set target-start-occupancy {model_config[model_size]["target_start_occupancy"]}'
-        )
+        for key in model_config[model_size].keys():
+            if "max" in key:
+                continue
+            self.nl.command(
+                f'set {key.replace("_", "-")} {model_config[model_size][key]}'
+            )
+            if self.test:
+                assert (
+                    self.nl.report(f'{key.replace("_", "-")}')
+                    == model_config[model_size][key]
+                ), f"{key} was not correctly set."
 
     def states(self):
         states_num = 15
@@ -152,7 +158,6 @@ class CustomEnvironment(Environment):
         return dict(type="float", shape=(states_num,), min_value=0.0, max_value=1.0)
 
     def actions(self):
-        num_values = 0
         if self.adjust_free:
             num_values = 21
         else:
@@ -236,9 +241,21 @@ class CustomEnvironment(Environment):
                 self.nl.command(
                     f"change-group-fees-free {c}-lot {new_fees}".replace(",", "")
                 )
+                if self.test:
+                    assert all(
+                        [
+                            fee == action
+                            for fee, action in zip(
+                                self.nl.report(f"[group-fees] of one-of {c}-lot"),
+                                new_fees,
+                            )
+                        ]
+                    )
             else:
                 new_fee = actions[c] / 2
                 self.nl.command(f"change-fee-free {c}-lot {new_fee}")
+                if self.test:
+                    assert self.nl.report(f"mean [fee] of {c}-lot") == new_fee
 
         return self.get_state()
 
@@ -258,9 +275,30 @@ class CustomEnvironment(Environment):
                 self.nl.command(
                     f"change-group-fees {c}-lot {fee_updates}".replace(",", "")
                 )
+                if self.test:
+                    assert all(
+                        [
+                            fee == action
+                            for fee, action in zip(
+                                self.nl.report(f"[group-fees] of one-of {c}-lot"),
+                                [
+                                    sum(x)
+                                    for x in zip(
+                                        self.current_state[f"{c}-lot fees"], fee_updates
+                                    )
+                                ],
+                            )
+                        ]
+                    )
             else:
                 c_action = actions[c]
                 self.nl.command(f"change-fee {c}-lot {action_translation[c_action]}")
+                if self.test:
+                    assert (
+                        self.nl.report(f"mean [fee] of {c}-lot")
+                        == self.current_state[f"{c}-lot fee"]
+                        + action_translation[c_action]
+                    )
 
         return self.get_state()
 
@@ -385,7 +423,6 @@ class CustomEnvironment(Environment):
         Returns:
 
         """
-        print(self.eval)
         self.nl.command(
             "ask cars [document-turtle]"
         )  # ask remaining turtles to document
