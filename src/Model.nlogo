@@ -1,4 +1,4 @@
-extensions [nw csv]
+extensions [nw csv table]   ;; "table" added in order to group the lot-list with utilities for all patches according to their lot-id
 
 breed [nodes node]
 breed [cars car]
@@ -37,13 +37,13 @@ globals
   blue-lot-current-occup     ;; current occupation of blue
   garages-current-occup
 
-  vanished-cars-poor        ;; counter for cars that are not respawned
+  vanished-cars-low        ;; counter for cars that are not respawned
   vanished-cars-middle
-  vanished-cars-rich
+  vanished-cars-high
 
   global-occupancy         ;; overall occupancy of all lots
   cars-to-create           ;; number of cars that have to be created to replace those leaving the map
-  poor-to-create
+  low-to-create
   middle-to-create
   high-to-create
   mean-income              ;; mean income of turtles
@@ -60,18 +60,27 @@ globals
   teal-lot     ;; agentset containing the patches that contain the spaces for the teal lot
   green-lot    ;; agentset containing the patches that contain the spaces for the green lot
   blue-lot      ;; agentset containing the patches that contain the spaces for the blue lot
-  lots          ;; agentset containing all patches that are parking spaces
+  lots          ;; agentset containing all patches that are roadside parking spaces
+  lot-ids               ;; list of all lot ids of actual parking lots
   gateways      ;; agentset containing all patches that are gateways to garages
   garages       ;; agentset containing all patches that are parking spaces in garages
+  park-spaces ;; Union of lots and garages
   finalpatches  ;; agentset containing all patches that are at the end of streets
   initial-spawnpatches ;; agentset containing all patches for initial spawning
   spawnpatches   ;;agentset containing all patches that are beginning of streets
   traffic-counter ;; counter to calibrate model to resemble subject as closely as possible
   income-entropy ;; normalized entropy of income-class distribution
-  initial-poor  ;; initial share of poor income class
-  normalized-share-poor ;;
+  initial-low  ;; initial share of low income class
+  normalized-share-low ;;
   mean-speed ;; average speed of cars not parking
   share-cruising ;; share of cars crusing
+
+  one-strategy-change-counter    ;; axhausen: total counter for one strategy changes;; modeling tipping point at around 400 traffic count density leading to rapid strategy changing
+  two-strategy-change-counter    ;; axhausen: total counter for two strategy changes;; after that traffic count, the agent stuck in traffic change strategies
+  road-space-dict                  ;; dict used to look-up patches between current street and parking space of choice
+
+
+  ;;debugging
 ]
 
 nodes-own
@@ -99,21 +108,37 @@ cars-own
   nav-prklist      ;; list of parking spots sorted by distance to nav-goal
   nav-hastarget?   ;; boolean to check if agent has objective
   nav-pathtofollow ;; list of nodes to follow
-  income-grade     ;; ordinial classification of income
+  income-group     ;; ordinial classification of income
   search-time    ;; time to find a parking space
   reinitialize? ;; for agents who have left the map
   die?
+  alternative? ;; boolean for compute-alterantive-route
   fee-income-share ;; fee as a portion of income
   distance-parking-target ;; distance from parking to target
+  max-dist-parking-target   ;; maximal distance between parking lot and target
+  max-dist-location-parking ;; maximal distance between agent and target
   price-paid       ;; price paid for pricing
   expected-fine    ;; expected fine for parking offender
-  outcome          ;; outcome of agents (depends on access and agress, price-paid, etc.)
+  outcome          ;; outcome of agents (utility achieved after parking)
 
+  utility-value             ;; utility calculated for agent
+
+  informed-flag             ;; polak: flag indicating whether agent is informed or not, random assignment
+  agent-strategy-flag       ;; polak: flag indicating which strategy agent selects based on whether its informed or not, Polak et al.
+  hard-weight-list          ;; polak: binary weight list based on the selected parking strategy for the utility function
+  fuzzy-weight-list         ;; polak: fuzzy weight list based on the selected parking strategy for the utility function
+  switch-strategy-flag      ;; axhausen: strategy changing flag, swap based on 'wait-time' value, when it becomes 1.5x & 2x times the 'mean-wait-time' value
+
+  util-increase             ;; counter to keep track of how often a parking spot was not used
+
+  fav-lot-id                ;; current parking target according to maximum utility
+  fav-lot-ids
 ]
 
 patches-own
 [
   road?           ;; true if the patch is a road
+  road-section    ;; id for road sections between intersections
   horizontal?     ;; true for road patches that are horizontal; false for vertical roads
                   ;;-1 for non-road patches
   alternate-direction? ;; true for every other parallel road.
@@ -138,6 +163,8 @@ patches-own
   center-distance ;; distance to center of map
   garage?         ;; true for private garages
   gateway?        ;; true for gateways of garages
+
+  service?                 ;; determines whether the parking spot is secure (1) or not (0)
 ]
 
 
@@ -150,6 +177,9 @@ patches-own
 ;; be created per road patch. Set up the plots.
 to setup
   clear-all
+  reset-ticks
+  reset-timer
+  let start-time timer
   setup-globals
   set speed-limit 0.9  ;;speed required for somewhat accurate representation
 
@@ -201,7 +231,7 @@ to setup
     let example_car one-of cars with [park > parking-cars-percentage and not parked?]
     ask example_car [
       set color cyan
-      set nav-prklist navigate patch-here nav-goal
+      set nav-prklist find-favorite-space    ;; polak: passing 'fuzzy-weight-list' values into the 'navigate' function
       set park parking-cars-percentage / 2
     ]
     watch example_car
@@ -210,15 +240,16 @@ to setup
   ]
 
   ;; for Reinforcement Learning reward function
-  set initial-poor count cars with [income-grade = 0] / count cars
+  set initial-low count cars with [income-group = 0] / count cars
 
   record-globals
-  reset-ticks
   ;; for documentation of all agents at every timestep
   if document-turtles [
     file-open output-turtle-file-path
     file-print csv:to-row (list "id" "income" "income-group" "wtp" "parking-offender?" "distance-parking-target" "price-paid" "search-time" "wants-to-park" "die?" "reinitialize?")
   ]
+  let end-time timer
+  show end-time - start-time
 end
 
 to setup-finalroads
@@ -227,7 +258,7 @@ to setup-finalroads
 end
 
 to setup-spawnroads
-  set spawnpatches roads
+  set spawnpatches roads with [(pxcor = max-pxcor and direction = "left") or (pxcor = min-pxcor and direction = "right") or (pycor  = max-pycor and direction = "down") or (pycor = min-pycor and direction = "up") ]
 end
 
 ;; spawn intial cars so that they can navigate over the map
@@ -246,9 +277,9 @@ to setup-globals
 
   set n-cars num-cars
 
-  set vanished-cars-poor 0
+  set vanished-cars-low 0
   set vanished-cars-middle 0
-  set vanished-cars-rich 0
+  set vanished-cars-high 0
   set traffic-counter 0
 
   set mean-income 0
@@ -270,12 +301,17 @@ to setup-globals
   set blue-lot-current-occup 0
   if num-garages > 0 [set garages-current-occup 0]
   set income-entropy 0
-  set initial-poor 0
-  set normalized-share-poor 0
+  set initial-low 0
+  set normalized-share-low 0
   set share-cruising 0
 
   ;; don't make acceleration 0.1 since we could get a rounding error and end up on a patch boundary
   set acceleration 0.099
+
+
+  ;;debugging
+
+  reset-timer
 end
 
 
@@ -320,6 +356,7 @@ to setup-patches
   setup-spawnroads
   setup-initial-spawnroads
   setup-nodes
+  setup-road-sections
 
   ;; all non-road patches can become goals
   set potential-goals patches with [pcolor = [221 218 213]]
@@ -362,6 +399,55 @@ to setup-roads
     ]
 
 
+  ]
+
+end
+
+to setup-road-sections
+  let id 1
+  let roads-to-id roads with  [road-section = 0]
+  ask intersections [
+    let x [pxcor] of self
+    let y [pycor] of self
+    ask roads-to-id with [pxcor = x and pycor > y and pycor <= y + 20] [
+      set road-section id
+    ]
+    set id id + 1
+    ask roads-to-id with [pxcor = x and pycor < y and pycor >= y - 20] [
+      set road-section id
+    ]
+    set id id + 1
+    ask roads-to-id with [pycor = y and pxcor < x and pxcor >= x - 14] [
+      set road-section id
+    ]
+    set id id + 1
+    ask roads-to-id with [pycor = y and pxcor > x and pxcor <= x + 14] [
+      set road-section id
+    ]
+    set id id + 1
+    set roads-to-id roads-to-id with  [road-section = 0]
+  ]
+
+  set road-space-dict table:make
+  foreach (remove-duplicates [road-section] of roads)
+  [ section ->
+    table:put road-space-dict section table:make
+    let road-patch one-of roads with [road-section = section]
+    let local-node one-of nodes-on road-patch
+    let furthest-space max-one-of park-spaces [get-path-length (local-node) (get-closest-node lot-id)]
+    table:put (table:get road-space-dict section) "max-dist-parking-target" get-path-length (local-node) (get-closest-node [lot-id] of furthest-space)
+    ask local-node [
+      foreach (remove-duplicates [lot-id] of park-spaces)  [space ->
+        ;let lot one-of lots with [lot-id = id]
+        table:put (table:get road-space-dict section) space table:make
+        let node-proxy get-closest-node space
+        let nodes-on-path (turtle-set nw:turtles-on-path-to node-proxy)
+        let patches-on-path (patch-set [patch-here] of nodes-on-path)
+        table:put (table:get (table:get road-space-dict section) space) "patches" (patches-on-path)
+        table:put (table:get (table:get road-space-dict section) space) "path-length"  (count patches-on-path)
+        table:put (table:get (table:get road-space-dict section) space) "traffic" count cars-on patches-on-path / (count  patches-on-path)
+      ]
+    ]
   ]
 end
 
@@ -463,6 +549,8 @@ to setup-lots;;intialize dynamic lots
   ;; create patch-set for all parking spaces on the curbside
   set lots (patch-set yellow-lot teal-lot green-lot blue-lot)
   set num-spaces count lots
+
+  set lot-ids [lot-ids] of lots;; list of all possible lot-ids being actual parking lots
 
   ;; color parking zones
   let yellow-c [255.0 254.997195 102.02397]
@@ -583,49 +671,58 @@ to setup-garages
   ]
   set garages patches with [garage?]
   set gateways patches with [gateway?]
+  set park-spaces (patch-set lots garages)
 END
 
-;; Initialize the turtle variables to appropriate values and place the turtle on an empty road patch.
+;; Initialize the turtle variables to appropriate values and place the turtles on an empty road patch.
 to setup-cars  ;; turtle procedure
+  ;show ""
   set speed 0
   set wait-time 0
   ;; check whether agent is created at beginning of model (reinitialize? = 0) or recreated during run of simulation (reinitialize? = true)
   ifelse reinitialize? = 0 [
     put-on-empty-road
     set income draw-income
-    set income-grade find-income-grade
+    set income-group find-income-group
     set park random 100
   ]
   [
-    move-to one-of spawnpatches with [not any? cars-on self]
+    ifelse count spawnpatches with [not any? cars-on self] > 0
+    [
+      move-to one-of spawnpatches with [not any? cars-on self]
+    ]
+    [
+      put-on-empty-road
+    ]
     ;; income of recreated cars is based on the distro of the model
     (ifelse
-      poor-to-create > 0 [
-        set poor-to-create poor-to-create - 1
-        set income-grade 99
+      low-to-create > 0 [
+        set low-to-create low-to-create - 1
+        set income-group 99
         ;; not very efficient, draw until desired income is drawn
-        while [income-grade != 0] [
+        while [income-group != 0] [
           set income draw-income
-          set income-grade find-income-grade
+          set income-group find-income-group
         ]
       ]
       middle-to-create > 0 [
         set middle-to-create middle-to-create - 1
-        set income-grade 99
-        while [income-grade != 1] [
+        set income-group 99
+        while [income-group != 1] [
           set income draw-income
-          set income-grade find-income-grade
+          set income-group find-income-group
         ]
       ]
       high-to-create > 0 [
         set high-to-create high-to-create - 1
-        set income-grade 99
-        while [income-grade != 2] [
+        set income-group 99
+        while [income-group != 2] [
           set income draw-income
-          set income-grade find-income-grade
+          set income-group find-income-group
         ]
       ]
     )
+
     ;; keep distro of cars wanting to park in model constant
     (ifelse (count cars with [park <= parking-cars-percentage] * 100 / count cars) > parking-cars-percentage
       [
@@ -656,9 +753,9 @@ to setup-cars  ;; turtle procedure
     direction-turtle = "right"[ 90 ])
 
   ;; set goals for navigation
-  set-navgoal
-  set nav-prklist navigate patch-here nav-goal
-  set nav-hastarget? false
+  ;set-navgoal
+  ;set nav-prklist navigate patch-here nav-goal
+  ;set nav-hastarget? false
 
 
   set park-time draw-park-duration
@@ -684,36 +781,99 @@ to setup-cars  ;; turtle procedure
   set price-paid -99
   set expected-fine -99
   set outcome -99
+
+  ;; new code for parking behvavior
+  ;let current-node one-of nodes-here
+  ;let furthest-space max-one-of park-spaces [get-path-length (current-node) (get-closest-node lot-id)]
+  ;set max-dist-parking-target get-path-length (current-node) (get-closest-node [lot-id] of furthest-space)
+  let section [road-section] of patch-here
+  set max-dist-parking-target table:get (table:get road-space-dict section) "max-dist-parking-target"
+
+  ;; set goals for navigation
+  set-navgoal
+  let goal nav-goal
+
+  set max-dist-parking-target distance max-one-of lots [distance goal]
+
+  ;; axhausen: setting up default strategy flag value i.e. no switch when the agent is initiated
+  set switch-strategy-flag 0
+  ;; polak: initializing variables for informed and uninformed agents that are selecting specific strategies
+  set informed-flag random 3 ;; polak: 0 denotes uninformed agent strategy, 1 informed agent strategy
+  set agent-strategy-flag 0 ;; polak: default initialization, denoting no strategy, weights initialized randomly default value
+  ifelse informed-flag = 1 or informed-flag = 2 [
+    set agent-strategy-flag draw-informed-strategy-value
+  ]
+  [
+    set agent-strategy-flag draw-uninformed-strategy-value
+  ]
+  ;; polak: below weights are stub values in-case 'agent-strategy-flag' is required to be set to 0
+  set hard-weight-list n-values 5 [random 2] ;; polak: randomly setting default weights
+  set fuzzy-weight-list map [i -> ifelse-value (i > 0)  [random-float i][i]] hard-weight-list ;; polak: setting random float weights based on binary weights
+                                                                                              ;; polak: setting the weight values from the 'binary-weight-list' and 'fuzzy-weight-list' based on the 'agent-strategy-flag' values
+  set hard-weight-list draw-hard-weights agent-strategy-flag hard-weight-list ;; two agruments for 'draw-binary-weights' function
+  set fuzzy-weight-list draw-fuzzy-weights hard-weight-list ;; one agruments for 'draw-fuzzy-weights' function
+
+
+  ;; set parking lot target according to utility function
+  set nav-prklist find-favorite-space      ;; polak: parsing 'fuzzy-weight-list' values to the 'navigate' function
+                                           ;if empty? nav-prklist [die]                                         ;; agent dies when already checked all parking spots
+                                           ;set lot-ids-checked insert-item 0 lot-ids-checked first nav-prklist ;; insert lot-id of current parking target in checked lot-ids list to keep track on which lots have already been visited
+  set nav-hastarget? false
+
 end
 
 ;; Setup cars before starting simulation so as to hit the target occupancy (if possible)
 to setup-parked
-  foreach lot-colors [ lot-color ->
-    let current-lot lots with [pcolor = lot-color]
-    let occupancy (count cars-on current-lot / count current-lot)
-    if occupancy < target-start-occupancy [
-      let inital-lot one-of current-lot with [not any? cars-on self]
-      move-to inital-lot
-      ask inital-lot [set car? true]
+  ;foreach lot-colors [ lot-color ->
+  ;let current-lot lots with [pcolor = lot-color]
+  ;let occupancy (count cars-on current-lot / count current-lot)
+  ;if occupancy < target-start-occupancy [
+  if count cars-on park-spaces / count park-spaces < target-start-occupancy [
+    while [not parked? and not empty? fav-lot-ids][
+      let current-space item 0 fav-lot-ids
+      let initial-lot one-of park-spaces with [lot-id = current-space  and not any? cars-on self]
+      ;print parked?
+      ;print wtp
+      ifelse initial-lot != nobody [
+        initial-park initial-lot
+        if not parked? [
+          set fav-lot-ids remove-item 0 fav-lot-ids
+        ]
+      ]
+      [
+        let current-lot park-spaces with [lot-id =  current-space]
+        set lots-checked (patch-set lots-checked current-lot)
+        set fav-lot-ids remove-item 0 fav-lot-ids
+      ]
+    ]
+  ]
+end
+
+to initial-park [initial-lot]
+  ;; different routings for garages and roadside spaces
+  ifelse member? initial-lot garages [
+    let current-space initial-lot
+    let parking-fee  [fee] of current-space  ;; compute fee
+    ifelse (wtp >= parking-fee)
+    [
+      move-to current-space
+      ask current-space [set car? true]
+      set paid? true
+      set price-paid parking-fee
+      set city-income city-income + parking-fee
       set parked? true
       set looks-for-parking? false
       set nav-prklist []
       set nav-hastarget? false
-      let parking-fee ([fee] of inital-lot )  ;; compute fee
       set fee-income-share (parking-fee / (income / 12))
-      ifelse (wtp >= parking-fee)
-      [
-        set paid? true
-        set price-paid parking-fee
-      ]
-      [
-        set paid? false
-      ]
-      set-car-color
+      set lots-checked no-patches
       set distance-parking-target distance nav-goal ;; update distance to goal (problematic here?)
+      let gateway-x one-of [pxcor] of gateways with [lot-id = [lot-id] of current-space]
+      let gateway-y one-of [pycor] of gateways with [lot-id = [lot-id] of current-space]
+      set outcome utility-value
       (foreach [0 0 1 -1] [-1 1 0 0] [[a b]->
-        if ((member? patch-at a b roads))[
-          set direction-turtle [direction] of patch-at a b
+        if ((member? patch (gateway-x + a) (gateway-y + b) roads))[
+          set direction-turtle [direction] of patch (gateway-x + a) (gateway-y + b)
           set heading (ifelse-value
             direction-turtle = "up" [ 0 ]
             direction-turtle = "down"[ 180 ]
@@ -725,51 +885,47 @@ to setup-parked
       )
       stop
     ]
-  ]
-  let gateway-ids [lot-id] of gateways
-  foreach gateway-ids [gateway ->
-    let current-garage garages with [lot-id = gateway]
-    let occupancy (count cars-on current-garage / count current-garage)
-    if occupancy < target-start-occupancy [
-      let parking-fee (mean [fee] of current-garage)  ;; compute fee
-      ifelse (wtp >= parking-fee)
-      [
-        let space one-of current-garage with [not any? cars-on self]
-        move-to space
-        ask space [set car? true]
-        set paid? true
-        set price-paid parking-fee
-        set city-income city-income + parking-fee
-        set parked? true
-        set looks-for-parking? false
-        set nav-prklist []
-        set nav-hastarget? false
-        set fee-income-share (parking-fee / (income / 12))
-        set lots-checked no-patches
-        set distance-parking-target distance nav-goal ;; update distance to goal (problematic here?)
-        let gateway-x one-of [pxcor] of gateways with [lot-id = gateway]
-        let gateway-y one-of [pycor] of gateways with [lot-id = gateway]
-        (foreach [0 0 1 -1] [-1 1 0 0] [[a b]->
-          if ((member? patch (gateway-x + a) (gateway-y + b) roads))[
-            set direction-turtle [direction] of patch (gateway-x + a) (gateway-y + b)
-            set heading (ifelse-value
-              direction-turtle = "up" [ 0 ]
-              direction-turtle = "down"[ 180 ]
-              direction-turtle = "left" [ 270 ]
-              direction-turtle = "right"[ 90 ])
-            stop
-          ]
-          ]
-        )
-        stop
-      ]
-      [
-        stop
-      ]
-
+    [
+      let current-lot park-spaces with [lot-id =   [lot-id] of current-space]
+      set lots-checked (patch-set lots-checked current-lot)
+      stop
     ]
   ]
-
+  [
+    move-to initial-lot
+    ask initial-lot [set car? true]
+    set parked? true
+    set looks-for-parking? false
+    set nav-prklist []
+    set nav-hastarget? false
+    let parking-fee ([fee] of initial-lot )  ;; compute fee
+    set fee-income-share (parking-fee / (income / 12))
+    ifelse (parking-offender?)
+    [
+      set paid? false
+    ]
+    [
+      set paid? true
+      set price-paid parking-fee
+    ]
+    set-car-color
+    ;set utility-value compute-utility initial-lot nav-goal util-increase fuzzy-weight-list
+    set outcome utility-value
+    set distance-parking-target distance nav-goal ;; update distance to goal (problematic here?)
+    (foreach [0 0 1 -1] [-1 1 0 0] [[a b]->
+      if ((member? patch-at a b roads))[
+        set direction-turtle [direction] of patch-at a b
+        set heading (ifelse-value
+          direction-turtle = "up" [ 0 ]
+          direction-turtle = "down"[ 180 ]
+          direction-turtle = "left" [ 270 ]
+          direction-turtle = "right"[ 90 ])
+        stop
+      ]
+      ]
+    )
+    stop
+  ]
 end
 
 ;; Find a road patch without any turtles on it and place the turtle there.
@@ -777,8 +933,174 @@ to put-on-empty-road  ;; turtle procedure
   move-to one-of initial-spawnpatches with [not any? cars-on self]
 end
 
+;; Compute the price you expect to pay for a parking lot
+to-report compute-price [parking-lot]
+  let expected-price 0
+  let fine-probability compute-fine-prob park-time
+
+  let parking-fee 0
+  ;; account for group pricing
+  ifelse group-pricing and not member? parking-lot garages
+  [set parking-fee item income-group [group-fees] of parking-lot]
+  [set parking-fee [fee] of parking-lot]
+
+  ;; you have to pay in garages
+  ifelse (parking-offender? and not member? parking-lot garages)[; and (wtp >= (parking-fee * fines-multiplier) * fine-probability))[
+    set expected-price (parking-fee * fines-multiplier) * fine-probability
+  ]
+  [
+    set expected-price parking-fee
+  ]
+  report expected-price
+end
+
+;; Compute the utility of a possible parking lot
+to-report compute-utility [parking-lot count-passed-spots] ;; polak: parsing the 'fuzzy-weight-list' weight vector
+  let goal nav-goal
+  set distance-parking-target [distance goal] of parking-lot
+  ;let distance-location-parking distance parking-lot ;; for this parking lot would need to be a patch
+
+  ;;compute global maxima for agent to be used in utility function
+  let max-path-length max-dist-parking-target
+
+  let traffic 0
+  let path-length 0
+  let lotID [lot-id] of parking-lot
+  let section [road-section] of patch-here
+
+  ;let patches-on-path
+
+  set path-length table:get (table:get (table:get road-space-dict section) lotID) "path-length"
+  if ticks > 0 [
+    set traffic table:get (table:get (table:get road-space-dict section) lotID) "traffic"
+  ]
+  set path-length path-length / max-path-length
+  if path-length > 1 [set path-length 1]
+
+
+  (ifelse
+    ;; axhausen: more flexible parking strategy selection after strategy swapping after high wait time values
+    wait-time > 2.5 * (temporal-resolution / 60) and wait-time < 5 * (temporal-resolution / 60) [ ;; conditional values tuned, Axhausen et al's 'stated preference experiment'.
+      ;; print "Statement 1 Triggered"
+      set fuzzy-weight-list draw-fuzzy-weights [0 1 0 1 0]
+      set switch-strategy-flag 1
+      set agent-strategy-flag 5
+      set one-strategy-change-counter one-strategy-change-counter + 1]
+    wait-time > 5 * (temporal-resolution / 60)  [ ;; conditional values tuned, Axhausen et al. 'stated preference experiment'.
+      ;; print "Statement 2 Triggered"
+      set fuzzy-weight-list draw-fuzzy-weights [0 1 0 0 0]
+      set switch-strategy-flag 2
+      set switch-strategy-flag 8
+      set two-strategy-change-counter two-strategy-change-counter + 1] ;; Flexible strategy, only concerned with distance location parking.
+  )
+
+  ;;initiate weights
+  ;; let weight-list n-values 5 [random-float 1] ;; polak: added the fuzzy weight list for parking strategy influence
+  ;; print fzy-wght-lst
+  let weight-sum sum fuzzy-weight-list
+  let norm-weight-list map [i -> i / weight-sum] fuzzy-weight-list ;; normalizes the weights such that they add up to 1
+  let w1 item 0 norm-weight-list
+  let w2 item 1 norm-weight-list
+  let w3 item 2 norm-weight-list
+  let w4 item 3 norm-weight-list
+  let w5 item 4 norm-weight-list
+
+
+  let price compute-price parking-lot
+  ;; set waiting-time wt-tm    ;; placeholder: commented out based the discussion
+  let service [service?] of parking-lot ;; currently service is 0.25 for garages, 0 others
+                                        ;; compute utility function
+                                        ;print traffic
+                                        ;print path-length
+  if traffic > 1 or path-length > 1 [
+    ;let nodes-on-path (turtle-set nw:turtles-on-path-to node-proxy)
+    ;print count cars-on nodes-on-path
+    ;print traffic
+    ;print count (patch-set [patch-here] of nodes-on-path)
+    ;print max-path-length
+    ;print path-length
+    ;print ""
+  ]
+  let utility (- (w1 * (distance-parking-target / max-dist-parking-target)) - (w2 * (0.5 * traffic + 0.5 * path-length)) - (w4 * (price / wtp)) + (w5 * service) + (count-passed-spots * 0.1) + random-normal 0 0.125)
+  ;; - (w3 * (waiting-time / mean-wait-time))    ;; placeholder: commented out based the discussion
+
+  report utility
+end
+
+;; Determine parking lots closest to current goal #
+to-report find-favorite-space ;; polak: parsing the 'fuzzy-weight-list' weight vector
+  let ut-list []
+  let current patch-here
+  ;;print "lot-ids-checked"
+  ;;print lot-ids-checked
+
+  if ((count lots-checked) > (count park-spaces / 2)) or (search-time > temporal-resolution) [report []]
+  ;if search-time > (temporal-resolution / 2) [report []]
+  ;; for each patch in lots-list computes a temporary list including lot-id with respective utility
+  foreach ((range 1 (lot-counter))) [id ->
+    let lot one-of lots with [lot-id = id]
+
+    ;; non-offenders should only consider spots they can afford
+    let parking-fee 0
+    ifelse group-pricing
+    [set parking-fee item income-group [group-fees] of lot]
+    [set parking-fee [fee] of lot]
+    if not member? lot lots-checked and (parking-offender? or (parking-fee <= wtp)) [                       ;; only compute utilities for lot-ids which have not been checked before
+      let utility compute-utility lot util-increase
+      let tmp list id utility
+      set ut-list lput tmp ut-list
+    ]
+  ]
+
+  ;; for each patch in garages-list computes a temporary list including lot-id with respective utility
+  ;; all utitilities and lot-ids are combined in ut-list
+  foreach (range (lot-counter ) (lot-counter + num-garages)) [id ->
+    let garage one-of garages with [lot-id = id]
+    if not member? garage lots-checked and any? garages with [lot-id = id and car? != true][                       ;; only compute utilities for lot-ids which have not been checked before
+      let utility compute-utility garage util-increase
+      let tmp list id utility
+      set ut-list lput tmp ut-list
+    ]
+  ]
+
+  ;;print "ut-list"
+
+  if empty? ut-list [report []]
+  let max-ut max map last ut-list
+
+  ifelse not empty? ut-list and max-ut >= min-util [
+  ;; now we need to group the utilities by lot-id and calculate the mean utility over the same lot-ids
+  ;let grouped-list table:group-items ut-list [l -> first l] ;; all utilities grouped by their lot-id
+  ;let lot-id-list table:keys grouped-list                   ;; list of all possible lot-ids being actual parking lots
+
+  ;let mean-ut-list []
+  ;foreach lot-id-list [id ->
+    ;let all-ut-list map last table:get grouped-list id
+    ;let mean-ut mean all-ut-list
+    ;let tmp2 list id mean-ut
+    ;set mean-ut-list lput tmp2 mean-ut-list                 ;; mean-ut-list gives us a nested list containing lot-id with its mean utility over all calculated utilities from the different patches
+  ;]
+
+  ;; compute maximum utility for each agent and save information together with respective lot-id in fav-lot
+  set utility-value max-ut
+  let fav-lot first filter [elem -> last elem = max-ut] ut-list      ;; favourite parking lot for the respective agent as a list of lot-id and utility
+  let test-list sort-by [[list1 list2] -> last list1 > last list2] ut-list
+  set fav-lot-ids map first test-list
+  set fav-lot-id (list first fav-lot)                                     ;; lot-id where the agents wants to navigate to saved in a list
+                                                                          ;; (for convenience such that we do not need to change other code since before it worked with a list)
+  ]
+  [
+    set fav-lot-id []
+    set fav-lot-ids []
+    set reinitialize? false
+    set die? true
+  ]
+
+  report fav-lot-id
+end
+
 ;; Determine parking lots closest to current goal
-to-report navigate [current goal]
+to-report old-navigate [current goal]
 
   let fav-lots []
   let templots lots
@@ -859,47 +1181,32 @@ to go
   ;; set the turtles speed for this time thru the procedure, move them forward their speed,
   ;; record data for plotting, and set the color of the turtles to an appropriate color
   ;; based on their speed
+  go-cars
+  ;; update the phase and the global clock
+  control-lots
+  ;; set prices dynamically
+  if dynamic-pricing-baseline [update-baseline-fees]
+  update-demand-curve
+  update-traffic-estimates
+  if not debugging [recreate-cars]
+  record-globals
+
+  next-phase
+  tick
+end
+
+
+to go-cars
   ask cars
   [
-    if die? and (patch-ahead 1 = nobody or (member? patch-ahead 1 finalpatches)) [;; if, due to rounding, the car ends up on the final patch or the next patch is a final patch
-      set traffic-counter traffic-counter + 1
-      if reinitialize? [
-        keep-distro income-grade
-        set cars-to-create cars-to-create +  1
-      ]
-      if document-turtles [document-turtle]
-      die
-    ]
-
     ifelse not parked?
     [
+      ;; check whether end of map is reached and turtle is supposed to die
+      check-for-death
       ;if car has no target
       if not nav-hastarget?[
-        ;; if I have already parked, I can delete my parking list.
-
-        let node-ahead one-of nodes-on patch-ahead 1
-        ifelse not empty? nav-prklist
-        ; set new path to first element of nav-prklist if not empty
-        [
-          ifelse node-ahead != nobody [
-            set nav-pathtofollow determine-path node-ahead first nav-prklist
-          ]
-          [
-            set nav-pathtofollow determine-path one-of nodes-on patch-here first nav-prklist
-          ]
-        ] ;; use patch-ahead because otherwise a node behind the car may be chosen, leading it to do a U-turn
-          ;; if the parking list is empty either all parkingspots were tried or the car has already parked
-        [
-          ifelse node-ahead != nobody [
-            set nav-pathtofollow determine-finaldestination node-ahead
-          ]
-          [
-            set nav-pathtofollow determine-finaldestination one-of nodes-on patch-here
-          ]
-          set die? true
-        ] ;; use patch-ahead because otherwise a node behind the car may be chosen, leading it to do a U-turn
-
-        set nav-hastarget? true
+        ; set new target
+        set-path
       ]
 
       ;; hotfix (should think of better solution)
@@ -908,78 +1215,127 @@ to go
         show patch-here
         show search-time
         if reinitialize? [
-          keep-distro income-grade
+          keep-distro income-group
           set cars-to-create cars-to-create +  1
         ]
         if document-turtles [document-turtle]
+        if not reinitialize? [
+          update-vanished
+          set outcome min-util
+        ]
         die
       ]
 
       ;==================================================
-      ifelse not empty? nav-pathtofollow [
-        if wait-time > 50 and member? patch-ahead 1 intersections[
-          ;; alternative routing to avoid non-dissolvable congestion
-          compute-alternative-route
-        ]
-        let nodex first nav-pathtofollow
-        set-car-speed
-        let x [xcor] of nodex
-        let y [ycor] of nodex
-        let patch-node patch x y
-        face nodex ; might have to be changed
-        set direction-turtle [direction] of patch-node
-        fd speed
-        if intersection? and not any? cars-on patch-ahead 1 [
-          ;in case someoned looked for a parking lot, after reaching the end of a street (=Intersection) he does not look anymore
-          set looks-for-parking? false
-          move-to nodex
-        ]
-        ;once we reached node
-        if one-of nodes-here = nodex [
-          ;delete first node from nav-pathtofollow
-          set nav-pathtofollow remove-item 0 nav-pathtofollow
-        ]
-      ]
-      [
-        ;is looking for parking
-        set looks-for-parking? true
-        ;car currently has no target
-        set nav-hastarget? false
-        ; first item from prklist is deleted (has been  visited)
-        if not empty? nav-prklist [ ;;Dummy implementation
-          set nav-prklist remove-item 0 nav-prklist
-        ]
-      ]
+      ;decide whether to move forward
+      navigate-road
       ;==================================================
-      if park <= parking-cars-percentage and looks-for-parking? ;; x% of cars look for parking
+      if looks-for-parking?;park <= parking-cars-percentage and  ;; x% of cars look for parking
       [
         park-car
+        if member? patch-ahead 1 intersections [ ;;Dummy implementation
+                                                 ;print self
+                                                 ;print patch-here
+                                                 ;print lots-checked
+          set looks-for-parking? false
+          set nav-prklist find-favorite-space
+        ]
       ]
       record-data
+      update-search-time
       ;;set-car-color
     ]
     [
       unpark-car
     ]
-    update-search-time ;;increments search-time if not parked
+    ;;increments search-time if not parked
+    ;show "final"
+    ;show timer
   ]
-
-  ;; update the phase and the global clock
-  control-lots
-  ;; set prices dynamically
-  if dynamic-pricing-baseline [update-baseline-fees]
-  update-demand-curve
-  recreate-cars
-  record-globals
-
-  next-phase
-  tick
 end
+
+
 
 ;;;;;;;;;;;;;;;;
 ;; Navigation ;;
 ;;;;;;;;;;;;;;;;
 
+to check-for-death
+  if die? and (patch-ahead 1 = nobody or (member? patch-ahead 1 finalpatches)) [;; if, due to rounding, the car ends up on the final patch or the next patch is a final patch
+    set traffic-counter traffic-counter + 1
+    if reinitialize? [
+      keep-distro income-group
+      set cars-to-create cars-to-create +  1
+    ]
+    if document-turtles [document-turtle]
+    if not reinitialize? [
+      update-vanished
+      set outcome min-util ;; does that make sense?
+    ]
+    die
+  ]
+end
+
+;set path to follow
+to set-path
+  ;; if I have already parked, I can delete my parking list.
+
+  let node-ahead one-of nodes-on patch-ahead 1
+  ifelse not empty? nav-prklist
+  ; set new path to first element of nav-prklist if not empty
+  [
+    ifelse node-ahead != nobody [
+      set nav-pathtofollow determine-path node-ahead first nav-prklist
+    ]
+    [
+      set nav-pathtofollow determine-path one-of nodes-on patch-here first nav-prklist
+    ]
+  ] ;; use patch-ahead because otherwise a node behind the car may be chosen, leading it to do a U-turn
+    ;; if the parking list is empty either all parkingspots were tried or the car has already parked
+  [
+    ifelse node-ahead != nobody [
+      set nav-pathtofollow determine-finaldestination node-ahead
+    ]
+    [
+      set nav-pathtofollow determine-finaldestination one-of nodes-on patch-here
+    ]
+    set die? true
+  ] ;; use patch-ahead because otherwise a node behind the car may be chosen, leading it to do a U-turn
+
+  set nav-hastarget? true
+end
+
+; decide whether to move forward
+to navigate-road
+  ifelse not empty? nav-pathtofollow [
+    if wait-time > temporal-resolution / 5 and member? patch-ahead 1 intersections[
+      ;; alternative routing to avoid non-dissolvable congestion (after 5 Minutes of waiting)
+      compute-alternative-route
+    ]
+    let nodex first nav-pathtofollow
+    set-car-speed
+    let x [xcor] of nodex
+    let y [ycor] of nodex
+    let patch-node patch x y
+    face nodex ; might have to be changed
+    set direction-turtle [direction] of patch-node
+    fd speed
+    ;once we reached node
+    if one-of nodes-here = nodex [
+      ;delete first node from nav-pathtofollow
+      set nav-pathtofollow remove-item 0 nav-pathtofollow
+    ]
+    ;show "move"
+    ;show timer
+  ]
+  [
+    ;is looking for parking
+    if park <= parking-cars-percentage [set looks-for-parking? true]
+    ;car currently has no target
+    set nav-hastarget? false
+    ; first item from prklist is deleted (has been  visited)
+  ]
+end
 
 ;; plot path to exit
 to-report determine-finaldestination [start-node]
@@ -992,17 +1348,8 @@ end
 
 ;; plot path to parking street
 to-report determine-path [start lotID]
-  let lotproxy one-of lots with [lot-id = lotID]
-  ;; if lot-id belongs to garage, navigate to gateway
-  if num-garages > 0 [
-    if any? gateways with [lot-id = lotID][
-      set lotproxy gateways with [lot-id = lotID]
-    ]
-  ]
-  let node-proxy 0
-  ask lotproxy [
-    set node-proxy one-of nodes-on neighbors4
-  ]
+
+  let node-proxy get-closest-node lotID
 
   let previous node-proxy
   ask node-proxy[
@@ -1028,12 +1375,39 @@ to-report determine-path [start lotID]
   report path
 end
 
+
+;; get clostest node to parking space
+to-report get-closest-node [lotID]
+  let lotproxy one-of lots with [lot-id = lotID]
+  ;; if lot-id belongs to garage, navigate to gateway
+  if num-garages > 0 [
+    if any? gateways with [lot-id = lotID][
+      set lotproxy gateways with [lot-id = lotID]
+    ]
+  ]
+  let closest-node 0
+  ask lotproxy [
+    set closest-node one-of nodes-on neighbors4
+  ]
+  report closest-node
+end
+
+to-report get-path-length [startNode endNode]
+  let path-length 0
+    ask startNode [
+    let nodes-on-path (turtle-set nw:turtles-on-path-to endNode)
+    set path-length count (patch-set [patch-here] of nodes-on-path)
+  ]
+  report path-length
+end
+
 ;; in cases of too much congestion, compute alternative route to destination
 to compute-alternative-route
   ;; Check whether intersections lies at the outer border of the map
   let intersec patch-ahead 1
   let x-intersec [pxcor] of intersec
   let y-intersec [pycor] of intersec
+  let cars-ahead 0
 
   ;; check what alternatives might be available
   let direct-x [dirx] of intersec
@@ -1051,31 +1425,50 @@ to compute-alternative-route
   let nodes-turn one-of nodes-on patch-at x y
   let path 0
   ifelse not member? nodes-ahead nav-pathtofollow [
-    ifelse nodes-ahead != nobody and not any? cars-on patch-ahead 2[
-      ask one-of nodes-on intersec [set path nw:turtles-on-path-to nodes-ahead]
+    ask patch-ahead 2 [
+      ;set pcolor turquoise
+      set cars-ahead cars in-radius 1
+    ]
+    ifelse nodes-ahead != nobody and not any? cars-ahead[
+      ;ask one-of nodes-on patch-at x y [set path nw:turtles-on-path-to nodes-ahead] ;;used to be intersec
+      move-to patch-ahead 2
+      ;ask one-of nodes-on intersec [set path nw:turtles-on-path-to nodes-ahead]
+      set alternative? true
     ]
     [
       stop
     ]
   ]
   [
+    ask patch-at x y [
+      ;set pcolor magenta
+      set cars-ahead cars in-radius 1
+    ]
     ifelse nodes-turn != nobody and not any? cars-on patch-at x y[
-      ask one-of nodes-on intersec [set path nw:turtles-on-path-to nodes-turn]
+      ;ask one-of nodes-on intersec [set path nw:turtles-on-path-to nodes-turn] ;;used to be intersec
+      move-to patch-at x y
+      set direction-turtle [direction] of patch-here
+      set heading (ifelse-value
+        direction-turtle = "up" [ 0 ]
+        direction-turtle = "down"[ 180 ]
+        direction-turtle = "left" [ 270 ]
+        direction-turtle = "right"[ 90 ])
+      set alternative? true
     ]
     [
       stop
     ]
   ]
-  ifelse not empty? nav-prklist
-  ; set new path to first element of nav-prklist if not empty
-  [
-    let path-to-parking determine-path last path first nav-prklist
-    set nav-pathtofollow remove-duplicates sentence path path-to-parking
-  ] ;; use patch-ahead because otherwise a node behind the car may be chosen, leading it to do a U-turn
-    ;; if the parking list is empty either all parkingspots were tried or the car has already parked
-  [
-    let path-to-death determine-finaldestination last path
-    set nav-pathtofollow remove-duplicates sentence path path-to-death
+  if alternative?[
+    ifelse not empty? nav-prklist
+    ; set new path to first element of nav-prklist if not empty
+    [
+      set nav-pathtofollow determine-path one-of nodes-on patch-ahead 1 first nav-prklist
+    ] ;; use patch-ahead because otherwise a node behind the car may be chosen, leading it to do a U-turn
+      ;; if the parking list is empty either all parkingspots were tried or the car has already parked
+    [
+      set nav-pathtofollow determine-finaldestination  one-of nodes-on patch-ahead 1
+    ]
   ]
 end
 
@@ -1209,7 +1602,11 @@ to set-speed  ;; turtle procedure
     let x [xcor] of node-after
     let y [ycor] of node-after
     let patch-after patch x y
-    if any? other cars-on patch-after or any? (cars-ahead)[ ;with [ direction-turtle != [direction-turtle] of myself ])[
+
+    ask patch-after [
+      set cars-ahead cars in-radius 1
+    ]
+    if any? (cars-ahead)[;any? cars-on patch-after or any? cars-on patch-after-after or  ;with [ direction-turtle != [direction-turtle] of myself ])[
       set speed 0
     ]
   ]
@@ -1260,15 +1657,15 @@ to record-globals ;; keep track of all global reporter variables
   set teal-lot-current-fee mean [fee] of teal-lot
   set blue-lot-current-fee mean [fee] of blue-lot
 
-  set global-occupancy count cars-on lots / count lots
+  set global-occupancy count cars-on park-spaces / count park-spaces
 
   set yellow-lot-current-occup count cars-on yellow-lot / count yellow-lot
   set green-lot-current-occup count cars-on green-lot / count green-lot
   set teal-lot-current-occup count cars-on teal-lot / count teal-lot
   set blue-lot-current-occup count cars-on blue-lot / count blue-lot
   if num-garages > 0 [set garages-current-occup count cars-on garages / count garages]
-  set normalized-share-poor ((count cars with [income-grade = 0] / count cars)  / initial-poor)
-  if normalized-share-poor > 1 [set normalized-share-poor 1]
+  set normalized-share-low ((count cars with [income-group = 0] / count cars)  / initial-low)
+  if normalized-share-low > 1 [set normalized-share-low 1]
 
   if count cars with [not parked?] > 0 [set share-cruising count cars with [park <= parking-cars-percentage and not parked?] / count cars with [not parked?]]
   ;set income-entropy compute-income-entropy
@@ -1288,7 +1685,7 @@ end
 
 
 to park-car ;;turtle procedure
-  ;; check whether parking spot on left or right is available
+            ;; check whether parking spot on left or right is available
   if (not parked? and (ticks > 0)) [
     (foreach [0 0 1 -1] [1 -1 0 0][ [a b] ->
       if [gateway?] of patch-at a b = true [
@@ -1296,49 +1693,49 @@ to park-car ;;turtle procedure
         set distance-parking-target distance nav-goal ;; update distance to goal
         stop
       ]
-      if ((member? (patch-at a b) lots) and (not any? cars-at a b))[
-        let parking-fee 0
-        ifelse group-pricing
-        [set parking-fee item income-grade [group-fees] of patch-at a b ]
-        [set parking-fee [fee] of patch-at a b]  ;; compute fee
-                                                 ;; check for parking offenders
-        let fine-probability compute-fine-prob park-time
-        ;; check if parking offender or WTP larger than fee
-        ifelse (parking-offender? and (wtp >= ([fee] of patch-at a b * fines-multiplier)* fine-probability ))[
-          set paid? false
-          set expected-fine ([fee] of patch-at a b * fines-multiplier)* fine-probability
-          set city-loss city-loss + parking-fee
-        ]
-        [
-          ifelse (wtp >= parking-fee)
+      if member? (patch-at a b) lots[
+        ifelse not any? cars-at a b [
+          let parking-fee 0
+          ifelse group-pricing
+          [set parking-fee item income-group [group-fees] of patch-at a b ]
+          [set parking-fee [fee] of patch-at a b]  ;; compute fee
+                                                   ;; check for parking offenders
+          let fine-probability compute-fine-prob park-time
+          ;; check if parking offender or WTP larger than fee
+          ifelse (parking-offender?)[ ;and (wtp >= ([fee] of patch-at a b * fines-multiplier)* fine-probability ))[
+            set paid? false
+            set expected-fine ([fee] of patch-at a b * fines-multiplier)* fine-probability
+            set city-loss city-loss + parking-fee
+          ]
           [
             set paid? true
             set city-income city-income + parking-fee
             set price-paid parking-fee
+            ;; keep track of checked lots
           ]
-          ;; keep track of checked lots
-          [
-            if not member? patch-at a b lots-checked
-            [
-              let lot-identifier [lot-id] of patch-at a b ;; value of lot-variable for current lot
-              let current-lot lots with [lot-id = lot-identifier]
-              set lots-checked (patch-set lots-checked current-lot)
-              update-wtp
-            ]
-            stop
-          ]
+          set-car-color
+          move-to patch-at a b
+          set parked? true
+          set outcome utility-value
+          set looks-for-parking? false
+          set nav-prklist []
+          set nav-hastarget? false
+          set fee-income-share (parking-fee / (income / 12)) ;; share of monthly income
+          ask patch-at a b [set car? true]
+          set lots-checked no-patches
+          set distance-parking-target distance nav-goal ;; update distance to goal
+          stop
         ]
-        set-car-color
-        move-to patch-at a b
-        set parked? true
-        set looks-for-parking? false
-        set nav-prklist []
-        set nav-hastarget? false
-        set fee-income-share (parking-fee / (income / 12)) ;; share of monthly income
-        ask patch-at a b [set car? true]
-        set lots-checked no-patches
-        set distance-parking-target distance nav-goal ;; update distance to goal
-        stop
+        [
+          if not member? patch-at a b lots-checked
+          [
+            let lot-identifier [lot-id] of patch-at a b ;; value of lot-variable for current lot
+            let current-lot lots with [lot-id = lot-identifier]
+            set lots-checked (patch-set lots-checked current-lot)
+            update-wtp
+          ]
+          ;stop
+        ]
       ]
       ]
     )
@@ -1358,6 +1755,7 @@ to park-in-garage [gateway] ;; procedure to park in garage
       set price-paid parking-fee
       set city-income city-income + parking-fee
       set parked? true
+      set outcome utility-value
       set looks-for-parking? false
       set nav-prklist []
       set nav-hastarget? false
@@ -1369,7 +1767,7 @@ to park-in-garage [gateway] ;; procedure to park in garage
       if not member? gateway lots-checked
       [
         let lot-identifier [lot-id] of gateway ;; value of lot-variable for current garage
-        let current-lot lots with [lot-id = lot-identifier]
+        let current-lot park-spaces with [lot-id = lot-identifier]
         set lots-checked (patch-set lots-checked current-lot)
         update-wtp
       ]
@@ -1433,7 +1831,7 @@ end
 to document-turtle;;
   let park-bool False
   if [park] of self <= parking-cars-percentage [set park-bool True]
-  file-print  csv:to-row [(list who income income-grade wtp parking-offender? distance-parking-target price-paid search-time park-bool die? reinitialize?)] of self
+  file-print  csv:to-row [(list who income income-group wtp parking-offender? distance-parking-target price-paid search-time park-bool die? reinitialize?)] of self
 end
 
 
@@ -1472,8 +1870,8 @@ to-report get-outcomes [group]
     ]
   ]
   [
-    ifelse count cars with [outcome != -99 and income-grade = group] > 0 [
-      report [outcome] of cars with [outcome != -99 and income-grade = group]
+    ifelse count cars with [outcome != -99 and income-group = group] > 0 [
+      report [outcome] of cars with [outcome != -99 and income-group = group]
     ]
     [
       report 0
@@ -1523,10 +1921,23 @@ to update-baseline-fees;;
   ]
 end
 
-to update-demand-curve
-  if (ticks mod (temporal-resolution / 2) = 0) [ ;; update fees every half hour
+to update-demand-curve ;; update demand to reflect changes over the course of a typical business day in Mannheim
+  if (ticks mod (temporal-resolution / 2) = 0) [ ;; update demand every half hour
     let x ticks / temporal-resolution + 8
     set parking-cars-percentage ((-5.58662028e-04 * x ^ 3 + 2.76514862e-02 * x ^ 2 + -4.09343614e-01 *  x +  2.31844786e+00)  + demand-curve-intercept) * 100
+  ]
+end
+
+to update-traffic-estimates
+  if (ticks mod (temporal-resolution / 2) = 0) [ ;; update demand every half hour
+    foreach (remove-duplicates [road-section] of roads)
+    [ section ->
+      foreach (remove-duplicates [lot-id] of park-spaces)  [space ->
+        ;let lot one-of lots with [lot-id = id]
+        let patches-on-path table:get (table:get (table:get road-space-dict section) space) "patches"
+        table:put (table:get (table:get road-space-dict section) space) "traffic" (count cars-on patches-on-path / (count  patches-on-path))
+      ]
+    ]
   ]
 end
 
@@ -1539,7 +1950,7 @@ end
 
 ;; for changing prices of income groups
 to change-group-fees [lot fee-change]
-  ask lot [set group-fees (map [ [a b] -> a + b] group-fees fee-change)]
+  ask lot [set group-fees (map [[a b] -> a + b] group-fees fee-change)]
 end
 
 to change-group-fees-free [lot new-fees]
@@ -1552,21 +1963,10 @@ to change-fee-free [lot new-fee]
 end
 
 to update-wtp ;;
-              ;; cars that did not find a place do not respawn
+  ;; cars that did not find a place do not respawn
   if empty? nav-prklist [
     set reinitialize? false
     set die? true
-    (ifelse
-      income-grade = 0 [
-        set vanished-cars-poor vanished-cars-poor + 1
-      ]
-      income-grade = 1 [
-        set vanished-cars-middle vanished-cars-middle + 1
-      ]
-      income-grade = 2 [
-        set vanished-cars-rich vanished-cars-rich + 1
-      ]
-    )
   ]
 
   if wtp-increased <= 5
@@ -1595,7 +1995,7 @@ end
 to keep-distro [income-class]
   (ifelse
     income-class = 0 [
-      set poor-to-create poor-to-create + 1
+      set low-to-create low-to-create + 1
     ]
     income-class = 1 [
       set middle-to-create middle-to-create + 1
@@ -1606,12 +2006,11 @@ to keep-distro [income-class]
   )
 end
 
-to update-search-time
-  if not parked?
+to update-search-time ;; update search-time only for those wanting to park right now
+  if not parked? and park <= parking-cars-percentage and not empty? nav-prklist
   [set search-time search-time + 1]
-
-  ;; output-print search-time
 end
+
 
 ;; randomly check for parking offenders every hour
 to control-lots
@@ -1690,7 +2089,7 @@ to-report draw-sampled-income ;;global reporter, draws a random income based on 
 end
 
 
-to-report find-income-grade ;;follow OECD standard
+to-report find-income-group ;;follow OECD standard
 
   (ifelse
     income > (pop-median-income * 2)
@@ -1711,15 +2110,15 @@ to-report draw-wtp ;;
   let mu 0
   let sigma 0
   (ifelse
-    income-grade = 0 [
+    income-group = 0 [
       set mu 2.5
       set sigma mu * 0.25
     ]
-    income-grade = 1 [
+    income-group = 1 [
       set mu 4.5
       set sigma mu * 0.30
     ]
-    income-grade = 2 [
+    income-group = 2 [
       set mu 8
       set sigma mu * 0.45
     ]
@@ -1729,11 +2128,11 @@ to-report draw-wtp ;;
 end
 
 to-report compute-income-entropy
-  let prop-poor (count cars with [income-grade = 0] / count cars)
-  let prop-middle (count cars with [income-grade = 1] / count cars)
-  let prop-rich (count cars with [income-grade = 2] / count cars)
+  let prop-low (count cars with [income-group = 0] / count cars)
+  let prop-middle (count cars with [income-group = 1] / count cars)
+  let prop-high (count cars with [income-group = 2] / count cars)
   let entropy 0
-  foreach (list prop-poor prop-middle prop-rich) [ class ->
+  foreach (list prop-low prop-middle prop-high) [ class ->
     if class > 0 [
       set entropy entropy + class * ln class
     ]
@@ -1741,6 +2140,95 @@ to-report compute-income-entropy
 
   let max-entropy -3 * (1 / 3 * ln (1 / 3))
   report (- entropy / max-entropy)
+end
+
+to update-vanished ;; update counter for cars that did not find parking and will thus not respawn
+  (ifelse
+    income-group = 0 [
+      set vanished-cars-low vanished-cars-low + 1
+    ]
+    income-group = 1 [
+      set vanished-cars-middle vanished-cars-middle + 1
+    ]
+    income-group = 2 [
+      set vanished-cars-high vanished-cars-high + 1
+    ]
+  )
+end
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Parking Strategy Utilities  ;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+
+;; polak: draw parking strategy distribution based on Polak et al., Parking Search Behaviour
+to-report draw-informed-strategy-value
+  let n-birmingham 147
+  let n-kingston 624
+
+  let same-park-value ( n-birmingham * 39 + n-kingston * 33 ) / (n-birmingham + n-kingston)
+  let private-park-value ( n-birmingham * 3 + n-kingston * 16 ) / (n-birmingham + n-kingston)
+  let destination-reach-park-value ( n-birmingham * 18 + n-kingston * 18 ) / (n-birmingham + n-kingston)
+  let nearest-goal-park-value ( n-birmingham * 26 + n-kingston * 18 ) / (n-birmingham + n-kingston)
+  let active-lookup-park-value ( n-birmingham * 11 + n-kingston * 8 ) / (n-birmingham + n-kingston)
+
+  let total-value-bound ( same-park-value + private-park-value + destination-reach-park-value + nearest-goal-park-value + active-lookup-park-value )
+  let switch-value random (total-value-bound + 1)
+  let informed-report-value 5
+  (ifelse
+    switch-value <= same-park-value [ set informed-report-value 1 ]
+    switch-value > same-park-value and switch-value <= (same-park-value + private-park-value) [ set informed-report-value 2 ]
+    switch-value > (same-park-value + private-park-value) and switch-value <= (same-park-value + private-park-value + destination-reach-park-value) [ set informed-report-value 3 ]
+    switch-value > (same-park-value + private-park-value + destination-reach-park-value) and switch-value <= (same-park-value + private-park-value + destination-reach-park-value + nearest-goal-park-value) [ set informed-report-value 4 ]
+    switch-value > (same-park-value + private-park-value + destination-reach-park-value + nearest-goal-park-value) and switch-value <= (same-park-value + private-park-value + destination-reach-park-value + nearest-goal-park-value + active-lookup-park-value) [ set informed-report-value 5 ]
+  )
+  report informed-report-value
+end
+
+;; polak: draw parking strategy distribution based on Polak et al., Parking Search Behaviour
+to-report draw-uninformed-strategy-value
+  let n-birmingham 147
+  let n-kingston 624
+
+  ;; let same-park-value ( n-birmingham * 39 + n-kingston * 33 ) / (n-birmingham + n-kingston)
+  ;; let private-park-value ( n-birmingham * 3 + n-kingston * 16 ) / (n-birmingham + n-kingston)
+  let destination-reach-park-value ( n-birmingham * 18 + n-kingston * 18 ) / (n-birmingham + n-kingston)
+  ;; let nearest-goal-park-value ( n-birmingham * 26 + n-kingston * 18 ) / (n-birmingham + n-kingston)
+  let active-lookup-park-value ( n-birmingham * 11 + n-kingston * 8 ) / (n-birmingham + n-kingston)
+
+  ;; let total-value-bound ( same-park-value + private-park-value + destination-reach-park-value + nearest-goal-park-value + active-lookup-park-value )
+  let total-value-bound ( destination-reach-park-value + active-lookup-park-value )
+  let switch-value random (total-value-bound + 1)
+  let uninformed-report-value 6
+  (ifelse
+    switch-value <= destination-reach-park-value [ set uninformed-report-value 6 ]
+    switch-value > destination-reach-park-value and switch-value <= ( destination-reach-park-value + active-lookup-park-value ) [ set uninformed-report-value 7 ]
+  )
+  report uninformed-report-value
+end
+
+;; polak: setting binary weight values based on strategy values, Polak et al., Parking Search Behaviour
+to-report draw-hard-weights [ag-strat-flg hrd-wghts]
+  let new-hrd-wghts hrd-wghts
+  (ifelse
+    ;; informed strategies values
+    ag-strat-flg = 1 [ set new-hrd-wghts [1 1 0 0 1] ]
+    ag-strat-flg = 2 [ set new-hrd-wghts [1 0 1 0 1] ]
+    ag-strat-flg = 3 [ set new-hrd-wghts [1 1 0 1 0] ]
+    ag-strat-flg = 4 [ set new-hrd-wghts [1 0 1 0 0] ]
+    ag-strat-flg = 5 [ set new-hrd-wghts [0 1 0 1 0] ]
+    ;; uninformed strategies values, Chaniotakis et al.; Parmar et al.
+    ag-strat-flg = 6 [ set new-hrd-wghts [1 0 1 1 0.25] ]
+    ag-strat-flg = 7 [ set new-hrd-wghts [0 0 1 1 0.25] ]
+  )
+  report new-hrd-wghts
+end
+
+;; polak: converting hard weights to fuzzy weights, adding normalized distribution for weight selection
+to-report draw-fuzzy-weights [hrd-wghts]
+  let weight-noise random-normal 0.0 0.125
+  let new-fuz-wghts map [i -> ifelse-value (i = 1)  [i - 0.3 + weight-noise][i + 0.3 + weight-noise]] hrd-wghts
+  report new-fuz-wghts
 end
 
 ; Copyright 2003 Uri Wilensky.
@@ -1823,9 +2311,9 @@ true
 true
 "" ""
 PENS
-"High Income" 1.0 0 -16777216 true "" "plot ((count cars with [income-grade = 2] / count cars) * 100)"
-"Middle Income" 1.0 0 -13791810 true "" "plot ((count cars with [income-grade = 1] / count cars) * 100)"
-"Low Income" 1.0 0 -2674135 true "" "ifelse count cars with [income-grade = 0] != 0 [plot ((count cars with [income-grade = 0] / count cars) * 100)][plot 0] "
+"High Income" 1.0 0 -16777216 true "" "if count cars with [income-group = 2] > 0 [plot ((count cars with [income-group = 2] / count cars) * 100)]"
+"Middle Income" 1.0 0 -13791810 true "" "if count cars with [income-group = 1] > 0 [plot ((count cars with [income-group = 1] / count cars) * 100)]"
+"Low Income" 1.0 0 -2674135 true "" "ifelse count cars with [income-group = 0] != 0 [plot ((count cars with [income-group = 0] / count cars) * 100)][plot 0] "
 "Share of intially spawned cars" 1.0 0 -7500403 true "" "plot (n-cars) * 100"
 "Entropy" 1.0 0 -955883 true "" "plot income-entropy * 100"
 
@@ -1947,7 +2435,7 @@ Utilized Capacity at Different Lots
 Time
 Utilized Capacity in %
 0.0
-21.0
+21600.0
 0.0
 100.0
 true
@@ -2083,9 +2571,9 @@ true
 true
 "" ""
 PENS
-"Mean" 1.0 0 -16777216 true "" "plot mean-income"
-"Median" 1.0 0 -2674135 true "" "plot median-income"
-"Standard Deviation" 1.0 0 -13791810 true "" "plot standard-deviation [income] of cars "
+"Mean" 1.0 0 -16777216 true "" "if count cars > 0 [plot mean-income]"
+"Median" 1.0 0 -2674135 true "" "if count cars > 0 [plot median-income]"
+"Standard Deviation" 1.0 0 -13791810 true "" "if count cars > 0 [plot standard-deviation [income] of cars ]"
 
 PLOT
 1537
@@ -2103,9 +2591,9 @@ true
 true
 "" ""
 PENS
-"High Income" 1.0 0 -16777216 true "" "ifelse count cars with [income-grade = 2] != 0 [plot mean [search-time] of cars with [income-grade = 2]][plot 0] "
-"Middle Income" 1.0 0 -13791810 true "" "plot mean [search-time] of cars with [income-grade = 1]"
-"Low Income" 1.0 0 -2674135 true "" "ifelse count cars with [income-grade = 0] != 0 [plot mean [search-time] of cars with [income-grade = 0]][plot 0] "
+"High Income" 1.0 0 -16777216 true "" "ifelse count cars with [income-group = 2] != 0 [plot mean [search-time] of cars with [income-group = 2 and park <= parking-cars-percentage]][plot 0] "
+"Middle Income" 1.0 0 -13791810 true "" "if count cars with [income-group = 1] > 0 [plot mean [search-time] of cars with [income-group = 1 and park <= parking-cars-percentage]]"
+"Low Income" 1.0 0 -2674135 true "" "ifelse count cars with [income-group = 0] != 0 [plot mean [search-time] of cars with [income-group = 0 and park <= parking-cars-percentage]][plot 0] "
 
 TEXTBOX
 89
@@ -2212,9 +2700,9 @@ true
 true
 "" ""
 PENS
-"High Income" 1.0 0 -16777216 true "" "ifelse count cars with [parked? = true and park <= parking-cars-percentage and income-grade = 2] != 0 [plot (count cars with [parked? = true and income-grade = 2] / count cars with [park <= parking-cars-percentage and income-grade = 2]) * 100][plot 0]"
-"Middle Income" 1.0 0 -13791810 true "" "ifelse count cars with [parked? = true and park <= parking-cars-percentage and income-grade = 1] != 0 [plot (count cars with [parked? = true and income-grade = 1] / count cars with [park <= parking-cars-percentage and income-grade = 1]) * 100][plot 0]"
-"Low Income" 1.0 0 -2674135 true "" "ifelse count cars with [parked? = true and park <= parking-cars-percentage and income-grade = 0] != 0 [plot (count cars with [parked? = true and income-grade = 0] / count cars with [park <= parking-cars-percentage and income-grade = 0]) * 100][ plot 0]"
+"High Income" 1.0 0 -16777216 true "" "ifelse count cars with [parked? = true and park <= parking-cars-percentage and income-group = 2] > 0 [plot (count cars with [parked? = true and income-group = 2] / count cars with [income-group = 2]) * 100][plot 0]"
+"Middle Income" 1.0 0 -13791810 true "" "ifelse count cars with [parked? = true and park <= parking-cars-percentage and income-group = 1] > 0 [plot (count cars with [parked? = true and income-group = 1] / count cars with [income-group = 1]) * 100][plot 0]"
+"Low Income" 1.0 0 -2674135 true "" "ifelse count cars with [parked? = true and park <= parking-cars-percentage and income-group = 0] > 0 [plot (count cars with [parked? = true and income-group = 0] / count cars with [income-group = 0]) * 100][ plot 0]"
 
 SLIDER
 40
@@ -2278,9 +2766,9 @@ true
 true
 "" ""
 PENS
-"High Income" 1.0 0 -16777216 true "" "ifelse count cars-on yellow-lot != 0 [plot (count cars with [([pcolor] of patch-here = [255.0 254.997195 102.02397]) and income-grade = 2] / count cars-on yellow-lot) * 100] [plot 0]"
-"Middle Income" 1.0 0 -13791810 true "" "ifelse count cars-on yellow-lot != 0 [plot (count cars with [([pcolor] of patch-here = [255.0 254.997195 102.02397]) and income-grade = 1] / count cars-on yellow-lot) * 100] [plot 0]"
-"Low Income" 1.0 0 -2674135 true "" "ifelse count cars-on yellow-lot != 0 [plot (count cars with [([pcolor] of patch-here = [255.0 254.997195 102.02397]) and income-grade = 0] / count cars-on yellow-lot) * 100][plot 0]"
+"High Income" 1.0 0 -16777216 true "" "ifelse count cars > 0 and count cars-on yellow-lot > 0 [plot (count cars with [([pcolor] of patch-here = [255.0 254.997195 102.02397]) and income-group = 2] / count cars-on yellow-lot) * 100] [plot 0]"
+"Middle Income" 1.0 0 -13791810 true "" "ifelse count cars > 0 and count cars-on yellow-lot > 0 [plot (count cars with [([pcolor] of patch-here = [255.0 254.997195 102.02397]) and income-group = 1] / count cars-on yellow-lot) * 100] [plot 0]"
+"Low Income" 1.0 0 -2674135 true "" "ifelse count cars > 0 and count cars-on yellow-lot > 0 [plot (count cars with [([pcolor] of patch-here = [255.0 254.997195 102.02397]) and income-group = 0] / count cars-on yellow-lot) * 100][plot 0]"
 
 TEXTBOX
 34
@@ -2414,7 +2902,7 @@ parking-cars-percentage
 parking-cars-percentage
 0
 100
-77.73591064639997
+67.21951363864997
 1
 1
 %
@@ -2436,9 +2924,9 @@ true
 true
 "" ""
 PENS
-"Low Income" 1.0 0 -2674135 true "" "plot vanished-cars-poor"
+"Low Income" 1.0 0 -2674135 true "" "plot vanished-cars-low"
 "Middle Income" 1.0 0 -13345367 true "" "plot vanished-cars-middle"
-"High Income" 1.0 0 -16777216 true "" "plot vanished-cars-rich"
+"High Income" 1.0 0 -16777216 true "" "plot vanished-cars-high"
 
 INPUTBOX
 16
@@ -2502,7 +2990,7 @@ SWITCH
 328
 group-pricing
 group-pricing
-0
+1
 1
 -1000
 
@@ -2585,6 +3073,52 @@ PENS
 "Low Income" 1.0 0 -2674135 true "" "if group-pricing [plot item 0 [group-fees] of one-of blue-lot]"
 "Middle Income" 1.0 0 -13791810 true "" "if group-pricing [plot item 1 [group-fees] of one-of blue-lot]"
 "High Income" 1.0 0 -16777216 true "" "if group-pricing [plot item 2 [group-fees] of one-of blue-lot]"
+
+SLIDER
+18
+1452
+190
+1485
+min-util
+min-util
+-5
+5
+-1.0
+0.5
+1
+NIL
+HORIZONTAL
+
+PLOT
+2048
+1095
+2357
+1391
+Outcome  per Income Class
+NIL
+NIL
+0.0
+10.0
+0.0
+0.0
+true
+true
+"" ""
+PENS
+"High Income" 1.0 0 -16777216 true "" "if count cars with [income-group = 2 ] > 0 [plot mean [outcome] of cars with [income-group = 2 and outcome != -99]]"
+"Middle Income" 1.0 0 -13791810 true "" "if count cars with [income-group = 1 ] > 0 [plot mean [outcome] of cars with [income-group = 1 and outcome != -99]]"
+"Low Income" 1.0 0 -2674135 true "" "if count cars with [income-group = 0 ] > 0 [plot mean [outcome] of cars with [income-group = 0 and outcome != -99]]"
+
+SWITCH
+38
+321
+151
+354
+debugging
+debugging
+1
+1
+-1000
 
 @#$#@#$#@
 # WHAT IS IT?
