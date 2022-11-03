@@ -317,7 +317,7 @@ class CustomEnvironment(Environment):
         # self.current_state['city_income'] = self.nl.report("city-income")
         self.current_state["mean_speed"] = self.nl.report("mean-speed")
         self.current_state["normalized_share_low"] = self.nl.report(
-            "normalized-share-poor"
+            "normalized-share-low"
         )
 
         # Append fees and current occupation to state
@@ -340,7 +340,7 @@ class CustomEnvironment(Environment):
             )
 
         # Add outcome divergences to state (compute current outcomes first)
-        self.nl.command("compute-outcome")
+        # self.nl.command("compute-outcome")
         self.current_state["global_outcome_divergence"] = compute_jenson_shannon(
             self.nl, intergroup=False
         )
