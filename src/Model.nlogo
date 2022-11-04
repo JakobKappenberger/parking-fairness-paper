@@ -1221,7 +1221,7 @@ to go-cars
         if document-turtles [document-turtle]
         if not reinitialize? [
           update-vanished
-          set outcome min-util
+          ;set outcome min-util
         ]
         die
       ]
@@ -1270,7 +1270,7 @@ to check-for-death
     if document-turtles [document-turtle]
     if not reinitialize? [
       update-vanished
-      set outcome min-util ;; does that make sense?
+      ;set outcome min-util ;; does that make sense?
     ]
     die
   ]
@@ -1967,6 +1967,7 @@ to update-wtp ;;
   if empty? nav-prklist [
     set reinitialize? false
     set die? true
+    set outcome min-util
   ]
 
   if wtp-increased <= 5
@@ -2902,7 +2903,7 @@ parking-cars-percentage
 parking-cars-percentage
 0
 100
-67.21951363864997
+71.68610977879996
 1
 1
 %
@@ -3094,7 +3095,7 @@ PLOT
 1095
 2357
 1391
-Outcome  per Income Class
+Outcome per Income Class
 NIL
 NIL
 0.0
@@ -3108,6 +3109,7 @@ PENS
 "High Income" 1.0 0 -16777216 true "" "if count cars with [income-group = 2 ] > 0 [plot mean [outcome] of cars with [income-group = 2 and outcome != -99]]"
 "Middle Income" 1.0 0 -13791810 true "" "if count cars with [income-group = 1 ] > 0 [plot mean [outcome] of cars with [income-group = 1 and outcome != -99]]"
 "Low Income" 1.0 0 -2674135 true "" "if count cars with [income-group = 0 ] > 0 [plot mean [outcome] of cars with [income-group = 0 and outcome != -99]]"
+"Global" 1.0 0 -7500403 true "" "if count cars with [income-group = 0 ] > 0 [plot mean [outcome] of cars with [outcome != -99]]"
 
 SWITCH
 38

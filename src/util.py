@@ -165,8 +165,10 @@ def compute_jenson_shannon(nl, intergroup=False):
             group_average = np.average(nl.report(f"get-outcomes {group}"))
             outcome_distro.append(group_average)
         outcome_distro = np.asarray(outcome_distro)
+        outcome_distro = (outcome_distro + 2 * abs(np.min(outcome_distro))) ** 7
     else:
         outcome_distro = np.array(nl.report('get-outcomes "all"'))
+        outcome_distro = (outcome_distro + 2 * abs(np.min(outcome_distro))) ** 7
     # Create probability vectors
     outcome_vec = outcome_distro / np.sum(outcome_distro)
     uniform_vec = np.ones(len(outcome_vec)) / len(outcome_vec)
@@ -414,6 +416,7 @@ def save_plots(outpath: Path, episode_path: str):
         plot_share_yellow,
         plot_share_parked,
         plot_share_vanished,
+        plot_outcomes
     ]:
         func(data_df, outpath)
 
@@ -874,6 +877,58 @@ def plot_share_vanished(data_df, outpath):
         ax.legend(fontsize=25, loc=loc)
 
         fig.savefig(str(outpath / f"share_vanished_{loc}.pdf"), bbox_inches="tight")
+        plt.close(fig)
+
+def plot_outcomes(data_df, outpath):
+    """
+    PLot shares of different income classes over run of episode.
+    :param data_df: DataFrame with data from current episode.
+    :param outpath: Path to save plot.
+    :return:
+    """
+    # Save plot with three variants of legend location
+    for loc in ["lower right", "right", "upper right"]:
+        fig, ax = plt.subplots(1, 1, figsize=(20, 8), dpi=300)
+        color_list = [cm.bamako(0), cm.bamako(1.0 * 1 / 2), cm.bamako(1.0)]
+        ax.plot(
+            data_df.x,
+            data_df.low_outcome,
+            label="Low Income",
+            linewidth=3,
+            color=color_list[0],
+        )
+        ax.plot(
+            data_df.x,
+            data_df.middle_outcome,
+            label="Middle Income",
+            linewidth=3,
+            color=color_list[1],
+        )
+        ax.plot(
+            data_df.x,
+            data_df.high_outcome,
+            label="High Income",
+            linewidth=3,
+            color=color_list[2],
+        )
+        ax.plot(
+            data_df.x,
+            data_df.global_outcome,
+            label="Global",
+            linewidth=3,
+            color="black",
+        )
+        #ax.set_ylim(bottom=0, top=1.01)
+
+        ax.set_ylabel("Outcome per Income Class", fontsize=30)
+        ax.grid(True)
+        ax.tick_params(axis="both", labelsize=25)
+        ax.set_xlabel("Time of Day", fontsize=30)
+        ax.set_xticks(ticks=np.arange(0, max(data_df["x"]) + 1, 2))
+        ax.set_xticklabels(labels=X_LABEL)
+        ax.legend(fontsize=25, loc=loc)
+
+        fig.savefig(str(outpath / f"outcomes_{loc}.pdf"), bbox_inches="tight")
         plt.close(fig)
 
 

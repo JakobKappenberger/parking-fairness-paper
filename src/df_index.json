@@ -110,5 +110,15 @@
       "fee_blue_middle",
       "fee_blue_high"
     ]
+  },
+    "outcome": {
+    "title": "\"Outcome per Income Class\"",
+    "offset": 11,
+    "cols": [
+      "high_outcome",
+      "middle_outcome",
+      "low_outcome",
+      "global_outcome"
+    ]
   }
 }
