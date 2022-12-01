@@ -60,7 +60,9 @@ class Experiment:
         self.zip = zip
         self.document = document
         self.num_parallel = num_parallel
-        assert not eval or self.num_parallel > 1, "Need parallel execution for evaluation mode."
+        assert (
+            not eval or self.num_parallel > 1
+        ), "Need parallel execution for evaluation mode."
         # Check if checkpoint is given (resume if given)
         if checkpoint is not None:
             self.resume_checkpoint = True
@@ -101,6 +103,9 @@ class Experiment:
             args["agent"] = agent
             with open(str(self.outpath / "config.txt"), "w") as outfile:
                 json.dump(args, outfile)
+
+        if "summarizer" in agent.keys():
+            agent["summarizer"] = str(self.outpath / "summarizer")
 
         # Create appropriate number of environments
         if num_parallel > 1:

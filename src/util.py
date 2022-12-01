@@ -124,6 +124,17 @@ def intergroup_outcome_reward_function(
     """
     return optimize_attr(current_state, "intergroup_outcome_divergence", mode="min")
 
+def low_outcome_reward_function(
+    colours: List[str], current_state: Dict[str, float]
+):
+    """
+
+    :param colours:
+    :param current_state:
+    :return:
+    """
+    reward = optimize_attr(current_state, "low_income_outcome")
+    return reward if reward < 1 else 1
 
 def optimize_attr(current_state: Dict[str, float], attr: str, mode="max"):
     """

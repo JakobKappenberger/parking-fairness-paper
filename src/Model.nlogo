@@ -249,7 +249,7 @@ to setup
     file-print csv:to-row (list "id" "income" "income-group" "wtp" "parking-offender?" "distance-parking-target" "price-paid" "search-time" "wants-to-park" "die?" "reinitialize?")
   ]
   let end-time timer
-  show end-time - start-time
+  ;show end-time - start-time
 end
 
 to setup-finalroads

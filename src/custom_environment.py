@@ -15,6 +15,7 @@ from src.util import (
     composite_reward_function,
     glob_outcome_reward_function,
     intergroup_outcome_reward_function,
+    low_outcome_reward_function,
     document_episode,
     compute_jenson_shannon,
 )
@@ -28,6 +29,7 @@ REWARD_FUNCTIONS = {
     "composite": composite_reward_function,
     "global_outcome": glob_outcome_reward_function,
     "intergroup_outcome": intergroup_outcome_reward_function,
+    "low_income_outcome": low_outcome_reward_function
 }
 
 
@@ -347,6 +349,10 @@ class CustomEnvironment(Environment):
         self.current_state["intergroup_outcome_divergence"] = compute_jenson_shannon(
             self.nl, intergroup=True
         )
+
+        self.current_state["low_income_outcome"] = np.average(
+            self.nl.report(f"get-outcomes 0")
+        ) - self.nl.report("min-util")
 
         state = []
         state.append(float(self.current_state["ticks"] / 21600))
