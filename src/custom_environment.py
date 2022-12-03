@@ -217,14 +217,15 @@ class CustomEnvironment(Environment):
         :param actions: actions to be taken in next time step
         :return:
         """
-        # Move simulation forward
-        self.nl.repeat_command("go", self.temporal_resolution / 2)
 
         # Adjust prices and query state
         if self.adjust_free:
             new_state = self.adjust_prices_free(actions)
         else:
             new_state = self.adjust_prices_step(actions)
+
+        # Move simulation forward
+        self.nl.repeat_command("go", self.temporal_resolution / 2)
 
         return new_state
 
