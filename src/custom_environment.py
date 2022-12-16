@@ -151,11 +151,11 @@ class CustomEnvironment(Environment):
                 ), f"{key} was not correctly set."
 
     def states(self):
-        states_num = 15
+        states_num = 11
         if self.n_garages > 0:
             states_num += 1
-        if self.group_pricing:
-            states_num += 8
+        # if self.group_pricing:
+        #     states_num += 8
 
         return dict(type="float", shape=(states_num,), min_value=0.0, max_value=1.0)
 
@@ -220,14 +220,14 @@ class CustomEnvironment(Environment):
 
         # Adjust prices and query state
         if self.adjust_free:
-            new_state = self.adjust_prices_free(actions)
+            self.adjust_prices_free(actions)
         else:
-            new_state = self.adjust_prices_step(actions)
+            self.adjust_prices_step(actions)
 
         # Move simulation forward
         self.nl.repeat_command("go", self.temporal_resolution / 2)
 
-        return new_state
+        return self.get_state()
 
     def adjust_prices_free(self, actions):
         """
@@ -260,7 +260,6 @@ class CustomEnvironment(Environment):
                 if self.test:
                     assert self.nl.report(f"mean [fee] of {c}-lot") == new_fee
 
-        return self.get_state()
 
     def adjust_prices_step(self, actions):
         """
@@ -303,7 +302,6 @@ class CustomEnvironment(Environment):
                         + action_translation[c_action]
                     )
 
-        return self.get_state()
 
     def get_state(self):
         """
@@ -368,11 +366,11 @@ class CustomEnvironment(Environment):
         for key in sorted(self.current_state.keys()):
             if "occupancy" in key:
                 state.append(np.around(self.current_state[key], 2))
-            elif "fees" in key:
-                for fee in self.current_state[key]:
-                    state.append(np.around(fee, 2) / 10)
-            elif "fee" in key:
-                state.append(np.around(self.current_state[key], 2) / 10)
+            # elif "fees" in key:
+            #     for fee in self.current_state[key]:
+            #         state.append(np.around(fee, 2) / 10)
+            # elif "fee" in key:
+            #     state.append(np.around(self.current_state[key], 2) / 10)
 
         state.append(np.float(self.current_state["global_outcome_divergence"]))
         state.append(np.float(self.current_state["intergroup_outcome_divergence"]))

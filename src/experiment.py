@@ -105,7 +105,7 @@ class Experiment:
                 json.dump(args, outfile)
 
         if "summarizer" in agent.keys():
-            agent["summarizer"] = str(self.outpath / "summarizer")
+            agent["summarizer"]["directory"] = str(self.outpath / "summarizer")
 
         # Create appropriate number of environments
         if num_parallel > 1:
