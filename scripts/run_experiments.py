@@ -1,11 +1,11 @@
 import sys
 from argparse import ArgumentParser
 
-from util import add_bool_arg
+from src.util import add_bool_arg
 
 sys.path.append("./external")
 
-from experiment import Experiment
+from src.experiment import Experiment
 
 if __name__ == "__main__":
     parser = ArgumentParser()
@@ -43,6 +43,7 @@ if __name__ == "__main__":
     add_bool_arg(parser, "sync_episodes")
     add_bool_arg(parser, "document", default=True)
     add_bool_arg(parser, "adjust_free", default=True)
+    add_bool_arg(parser, "group_pricing", default=False)
     add_bool_arg(parser, "eval", default=False)
     add_bool_arg(parser, "zip", default=False)
     add_bool_arg(parser, "gui", default=False)
@@ -59,6 +60,7 @@ if __name__ == "__main__":
         reward_key=args.reward_key,
         document=args.document,
         adjust_free=args.adjust_free,
+        group_pricing=args.group_pricing,
         checkpoint=args.checkpoint,
         eval=args.eval,
         zip=args.zip,
