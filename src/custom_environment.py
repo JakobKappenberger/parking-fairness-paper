@@ -15,7 +15,7 @@ from src.util import (
     composite_reward_function,
     glob_outcome_reward_function,
     intergroup_outcome_reward_function,
-    low_outcome_reward_function,
+    composite_outcome_reward_function,
     document_episode,
     compute_jenson_shannon,
 )
@@ -29,7 +29,7 @@ REWARD_FUNCTIONS = {
     "composite": composite_reward_function,
     "global_outcome": glob_outcome_reward_function,
     "intergroup_outcome": intergroup_outcome_reward_function,
-    "low_income_outcome": low_outcome_reward_function
+    "composite_outcome": composite_outcome_reward_function,
 }
 
 
@@ -151,7 +151,7 @@ class CustomEnvironment(Environment):
                 ), f"{key} was not correctly set."
 
     def states(self):
-        states_num = 11
+        states_num = 12
         if self.n_garages > 0:
             states_num += 1
         # if self.group_pricing:
@@ -260,7 +260,6 @@ class CustomEnvironment(Environment):
                 if self.test:
                     assert self.nl.report(f"mean [fee] of {c}-lot") == new_fee
 
-
     def adjust_prices_step(self, actions):
         """
         Adjust prices incrementally in the simulation according to the actions taken by the agent.
@@ -301,7 +300,6 @@ class CustomEnvironment(Environment):
                         == self.current_state[f"{c}-lot fee"]
                         + action_translation[c_action]
                     )
-
 
     def get_state(self):
         """
@@ -349,9 +347,12 @@ class CustomEnvironment(Environment):
             self.nl, intergroup=True
         )
 
-        self.current_state["low_income_outcome"] = np.average(
-            self.nl.report(f"get-outcomes 0")
+        self.current_state["average_outcome"] = np.average(
+            (self.nl.report('get-outcomes "all"'))
         ) - self.nl.report("min-util")
+
+        if self.current_state["average_outcome"] > 1:
+            self.current_state["average_outcome"] = 1.0
 
         state = []
         state.append(float(self.current_state["ticks"] / 21600))
@@ -374,6 +375,7 @@ class CustomEnvironment(Environment):
 
         state.append(np.float(self.current_state["global_outcome_divergence"]))
         state.append(np.float(self.current_state["intergroup_outcome_divergence"]))
+        state.append(np.float(self.current_state["average_outcome"]))
 
         if not self.adjust_free:
             action_masks = {}

@@ -2,6 +2,8 @@ import json
 import shutil
 from datetime import datetime
 from pathlib import Path
+from glob import glob
+import os
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -31,6 +33,7 @@ class Experiment:
         num_parallel: int = 1,
         reward_key: str = "occupancy",
         checkpoint: str = None,
+        use_newest_checkpoint: bool = False,
         eval: bool = False,
         zip: bool = False,
         test: bool = False,
@@ -64,9 +67,15 @@ class Experiment:
             not eval or self.num_parallel > 1
         ), "Need parallel execution for evaluation mode."
         # Check if checkpoint is given (resume if given)
-        if checkpoint is not None:
+        if checkpoint is not None and not use_newest_checkpoint:
             self.resume_checkpoint = True
             self.timestamp = checkpoint
+        elif checkpoint is None and use_newest_checkpoint:
+            self.resume_checkpoint = True
+            runs = glob(str(Path(".").absolute().parent / "results" / reward_key) +"/*" )
+            latest_run = max(runs, key=os.path.getctime).split("\\")[-1]
+            self.timestamp = latest_run
+            print(f"Resuming latest checkpoint {self.timestamp}")
         else:
             self.resume_checkpoint = False
             self.timestamp = datetime.now().strftime("%y%m-%d-%H%M")
