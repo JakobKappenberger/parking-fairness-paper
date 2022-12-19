@@ -110,7 +110,9 @@ def glob_outcome_reward_function(colours: List[str], current_state: Dict[str, fl
     :param current_state:State dictionary.
     :return: reward
     """
-    return optimize_attr(current_state, "global_outcome_divergence", mode="min")
+    return optimize_attr(
+        current_state, "global_outcome_divergence", mode="min", power=2
+    )
 
 
 def intergroup_outcome_reward_function(
@@ -122,21 +124,28 @@ def intergroup_outcome_reward_function(
      :param current_state:State dictionary.
      :return: reward
     """
-    return optimize_attr(current_state, "intergroup_outcome_divergence", mode="min")
+    return optimize_attr(
+        current_state, "intergroup_outcome_divergence", mode="min", power=2
+    )
 
-def low_outcome_reward_function(
+
+def composite_outcome_reward_function(
     colours: List[str], current_state: Dict[str, float]
 ):
     """
-
-    :param colours:
-    :param current_state:
-    :return:
+    Minimizes the combination of intergroup and global (income) outcome divergences of the turtles in the model.
+     :param colours: Colours of different CPZs (only present to be able to use one call in custom_environment.py).
+     :param current_state:State dictionary.
+     :return: reward
     """
-    reward = optimize_attr(current_state, "low_income_outcome")
-    return reward if reward < 1 else 1
+    return optimize_attr(
+        current_state, "intergroup_outcome_divergence", mode="min", power=2
+    ) * optimize_attr(current_state, "average_outcome", mode="max")
 
-def optimize_attr(current_state: Dict[str, float], attr: str, mode="max"):
+
+def optimize_attr(
+    current_state: Dict[str, float], attr: str, mode="max", power: int = 2
+):
     """
     Abstract function to optimize attributes.
     :param mode: either "min" or "max" (default).
@@ -145,9 +154,9 @@ def optimize_attr(current_state: Dict[str, float], attr: str, mode="max"):
     :return: reward-value
     """
     if mode == "min":
-        return abs(current_state[attr] - 1) ** 2
+        return abs(current_state[attr] - 1) ** power
     else:
-        return current_state[attr] ** 2
+        return current_state[attr] ** power
 
 
 def add_bool_arg(parser, name, default=False):
@@ -176,15 +185,19 @@ def compute_jenson_shannon(nl, intergroup=False):
             group_average = np.average(nl.report(f"get-outcomes {group}"))
             outcome_distro.append(group_average)
         outcome_distro = np.asarray(outcome_distro)
-        outcome_distro = (outcome_distro + 2 * abs(np.min(outcome_distro))) ** 7
+        outcome_distro = (outcome_distro + 2 * abs(np.min(outcome_distro))) ** 5
     else:
         outcome_distro = np.array(nl.report('get-outcomes "all"'))
-        outcome_distro = (outcome_distro + 2 * abs(np.min(outcome_distro))) ** 7
+        outcome_distro = (outcome_distro + 2 * abs(np.min(outcome_distro))) ** 5
     # Create probability vectors
     outcome_vec = outcome_distro / np.sum(outcome_distro)
     uniform_vec = np.ones(len(outcome_vec)) / len(outcome_vec)
+    max_outcome = np.zeros(len(outcome_vec))
+    max_outcome[0] = 1.0
+    dist = distance.jensenshannon(outcome_vec, uniform_vec)
+    max_dist = distance.jensenshannon(max_outcome, uniform_vec)
     # Compare to uniform distribution and return Jensen-Shannon distance (will be squared in reward function)
-    return distance.jensenshannon(outcome_vec, uniform_vec)
+    return dist / max_dist
 
 
 def document_episode(nl, path: Path, reward_sum, uuid):
@@ -427,7 +440,7 @@ def save_plots(outpath: Path, episode_path: str):
         plot_share_yellow,
         plot_share_parked,
         plot_share_vanished,
-        plot_outcomes
+        plot_outcomes,
     ]:
         func(data_df, outpath)
 
@@ -890,6 +903,7 @@ def plot_share_vanished(data_df, outpath):
         fig.savefig(str(outpath / f"share_vanished_{loc}.pdf"), bbox_inches="tight")
         plt.close(fig)
 
+
 def plot_outcomes(data_df, outpath):
     """
     PLot shares of different income classes over run of episode.
@@ -929,7 +943,7 @@ def plot_outcomes(data_df, outpath):
             linewidth=3,
             color="black",
         )
-        #ax.set_ylim(bottom=0, top=1.01)
+        # ax.set_ylim(bottom=0, top=1.01)
 
         ax.set_ylabel("Outcome per Income Class", fontsize=30)
         ax.grid(True)
