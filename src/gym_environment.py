@@ -16,7 +16,6 @@ from src.util import (
     composite_reward_function,
     glob_outcome_reward_function,
     intergroup_outcome_reward_function,
-    low_outcome_reward_function,
     document_episode,
     compute_jenson_shannon,
 )
@@ -30,7 +29,6 @@ REWARD_FUNCTIONS = {
     "composite": composite_reward_function,
     "global_outcome": glob_outcome_reward_function,
     "intergroup_outcome": intergroup_outcome_reward_function,
-    "low_income_outcome": low_outcome_reward_function,
 }
 
 
@@ -65,7 +63,6 @@ class GymEnvironment(gym.Env):
         :param test:
         """
         super().__init__()
-
         self.timestamp = timestamp
         self.outpath = (
             Path(".").absolute().parent / "results" / reward_key / self.timestamp
@@ -83,7 +80,7 @@ class GymEnvironment(gym.Env):
         self.reward_sum = 0
         # Load model parameters
         config_path = Path(__file__).with_name("model_config.json")
-        with open(config_path, "r") as fp:
+        with open("model_config.json", "r") as fp:
             model_config = json.load(fp=fp)
         # Connect to NetLogo
         if platform.system() == "Linux":
@@ -256,8 +253,8 @@ class GymEnvironment(gym.Env):
             # elif "fee" in key:
             #     state.append(np.around(self.current_state[key], 2) / 10)
 
-        state.append(np.float(self.current_state["global_outcome_divergence"]))
-        state.append(np.float(self.current_state["intergroup_outcome_divergence"]))
+        state.append(float(self.current_state["global_outcome_divergence"]))
+        state.append(float(self.current_state["intergroup_outcome_divergence"]))
 
         # if not self.adjust_free:
         #     action_masks = {}
@@ -316,6 +313,10 @@ class GymEnvironment(gym.Env):
         if self.render_mode == "human":
             self._render_frame()
 
+        if terminated:
+            print("episode finished!")
+
+        print(reward)
         return next_state, reward, terminated, {"info": "no-info"}
 
     def compute_step(self, actions):
@@ -378,7 +379,8 @@ class GymEnvironment(gym.Env):
                         ]
                     )
             else:
-                new_fee = actions[c] / 2
+                new_fee = actions[i] / 2
+                i += 1
                 self.nl.command(f"change-fee-free {c}-lot {new_fee}")
                 if self.test:
                     assert self.nl.report(f"mean [fee] of {c}-lot") == new_fee
