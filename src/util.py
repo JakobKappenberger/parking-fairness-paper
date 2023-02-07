@@ -10,6 +10,7 @@ import matplotlib
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
+from pandas.errors import ParserError
 import seaborn as sns
 from cmcrameri import cm
 from scipy.spatial import distance
@@ -413,6 +414,9 @@ def get_data_from_run(episode_path):
             i += 1
         except KeyError:
             INDEX_DICT[key]["offset"] += 1
+        except ParserError:
+            print("No group fees recorded")
+            i += 1
 
     return data_df
 
@@ -511,47 +515,49 @@ def plot_group_fees(data_df, outpath):
     :return:
     """
     for color in ["yellow", "green", "teal", "blue"]:
-        # Save plot with three variants of legend location
-        for loc in ["lower right", "right", "upper right"]:
-            fig, ax = plt.subplots(1, 1, figsize=(20, 8), dpi=300)
-            color_list = [cm.bamako(0), cm.bamako(1.0 * 1 / 2), cm.bamako(1.0)]
-            ax.plot(
-                data_df.x,
-                data_df[f"fee_{color}_low"],
-                label="Low Income",
-                linewidth=3,
-                color=color_list[0],
-            )
-            ax.plot(
-                data_df.x,
-                data_df[f"fee_{color}_middle"],
-                label="Middle Income",
-                linewidth=3,
-                color=color_list[1],
-                linestyle="dashed",
-            )
-            ax.plot(
-                data_df.x,
-                data_df[f"fee_{color}_high"],
-                label="High Income",
-                linewidth=3,
-                color=color_list[2],
-                linestyle="dashed",
-            )
-            ax.set_ylim(bottom=0, top=10.1)
+        if f"fee_{color}_middle" in data_df.columns:
+            print(True)
+            # Save plot with three variants of legend location
+            for loc in ["lower right", "right", "upper right"]:
+                fig, ax = plt.subplots(1, 1, figsize=(20, 8), dpi=300)
+                color_list = [cm.bamako(0), cm.bamako(1.0 * 1 / 2), cm.bamako(1.0)]
+                ax.plot(
+                    data_df.x,
+                    data_df[f"fee_{color}_low"],
+                    label="Low Income",
+                    linewidth=3,
+                    color=color_list[0],
+                )
+                ax.plot(
+                    data_df.x,
+                    data_df[f"fee_{color}_middle"],
+                    label="Middle Income",
+                    linewidth=3,
+                    color=color_list[1],
+                    linestyle="dashed",
+                )
+                ax.plot(
+                    data_df.x,
+                    data_df[f"fee_{color}_high"],
+                    label="High Income",
+                    linewidth=3,
+                    color=color_list[2],
+                    linestyle="dashed",
+                )
+                ax.set_ylim(bottom=0, top=10.1)
 
-            ax.set_ylabel("Hourly Fee in €", fontsize=30)
-            ax.grid(True)
-            ax.tick_params(axis="both", labelsize=25)
-            ax.set_xlabel("Time of Day", fontsize=30)
-            ax.set_xticks(ticks=np.arange(0, max(data_df["x"]) + 1, 2))
-            ax.set_xticklabels(labels=X_LABEL)
-            ax.legend(fontsize=25, loc=loc)
+                ax.set_ylabel("Hourly Fee in €", fontsize=30)
+                ax.grid(True)
+                ax.tick_params(axis="both", labelsize=25)
+                ax.set_xlabel("Time of Day", fontsize=30)
+                ax.set_xticks(ticks=np.arange(0, max(data_df["x"]) + 1, 2))
+                ax.set_xticklabels(labels=X_LABEL)
+                ax.legend(fontsize=25, loc=loc)
 
-            fig.savefig(
-                str(outpath / f"{color}_group_fees_{loc}.pdf"), bbox_inches="tight"
-            )
-            plt.close(fig)
+                fig.savefig(
+                    str(outpath / f"{color}_group_fees_{loc}.pdf"), bbox_inches="tight"
+                )
+                plt.close(fig)
 
 
 def plot_occup(data_df, outpath):
