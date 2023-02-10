@@ -3,7 +3,6 @@ from argparse import ArgumentParser
 
 from src.util import add_bool_arg
 
-sys.path.append("./external")
 
 from src.experiment import Experiment
 
@@ -39,6 +38,13 @@ if __name__ == "__main__":
         default=None,
         help="Path to NetLogo directory (for Linux Users)",
     )
+    parser.add_argument(
+        "-wb",
+        "--wandb_project",
+        type=str,
+        default=None,
+        help="Weights and Biases project to log run at",
+    )
     add_bool_arg(parser, "batch_agent_calls")
     add_bool_arg(parser, "sync_episodes")
     add_bool_arg(parser, "document", default=True)
@@ -47,6 +53,7 @@ if __name__ == "__main__":
     add_bool_arg(parser, "eval", default=False)
     add_bool_arg(parser, "zip", default=False)
     add_bool_arg(parser, "gui", default=False)
+    add_bool_arg(parser, "use_newest_checkpoint", default=False)
 
     args = parser.parse_args()
     print(f" Experiment called with arguments: {vars(args)}")
@@ -59,9 +66,11 @@ if __name__ == "__main__":
         num_parallel=args.num_parallel,
         reward_key=args.reward_key,
         document=args.document,
+        wandb_project=args.wandb_project,
         adjust_free=args.adjust_free,
         group_pricing=args.group_pricing,
         checkpoint=args.checkpoint,
+        use_newest_checkpoint=args.use_newest_checkpoint,
         eval=args.eval,
         zip=args.zip,
         model_size=args.model_size,

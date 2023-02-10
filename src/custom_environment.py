@@ -39,6 +39,7 @@ class CustomEnvironment(Environment):
         timestamp: str,
         reward_key: str,
         document: bool = False,
+        wandb=None,
         adjust_free: bool = False,
         group_pricing: bool = False,
         model_size: str = "training",
@@ -53,13 +54,14 @@ class CustomEnvironment(Environment):
         :param timestamp: Timestamp of episode.
         :param reward_key: Key to choose reward function
         :param document: Boolean to control whether individual episode results are saved.
+        :param wandb: Instance of Weights and Biases run, if W&B is used.
         :param adjust_free: Boolean to control whether prices are adjusted freely or incrementally
         :param model_size: Model size to run experiments with, either "training" or "evaluation".
         :param nl_path: Path to NetLogo Installation (for Linux users)
-        :param gui: Whether or not NetLogo UI is shown during episodes.
-        :param group_pricing:
-        :param eval:
-        :param test:
+        :param gui: Whether NetLogo UI is shown during episodes.
+        :param group_pricing: Whether prices are set for different income groups individually (per CPZ).
+        :param eval: Whether current experiment is for evaluation.
+        :param test: Whether to run in test mode.
         """
         super().__init__()
         self.timestamp = timestamp
@@ -71,6 +73,10 @@ class CustomEnvironment(Environment):
         self.finished = False
         self.episode_end = False
         self.document = document
+        if wandb is not None:
+            self.wandb = wandb
+        else:
+            self.wandb = None
         self.adjust_free = adjust_free
         self.group_pricing = group_pricing
         self.eval = eval
@@ -208,6 +214,10 @@ class CustomEnvironment(Environment):
         terminal = self.terminal()
         reward = self.reward()
         self.reward_sum += reward
+
+        # Save reward in W&B
+        if self.wandb is not None and terminal:
+            self.wandb.log({"reward": self.reward_sum})
 
         return next_state, terminal, reward
 

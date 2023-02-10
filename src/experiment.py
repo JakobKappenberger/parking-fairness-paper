@@ -10,6 +10,7 @@ import numpy as np
 import pandas as pd
 import seaborn as sns
 from cmcrameri import cm
+import wandb
 
 from src.custom_environment import CustomEnvironment
 from src.external.tensorforce.execution import Runner
@@ -28,6 +29,7 @@ class Experiment:
         batch_agent_calls: bool = False,
         sync_episodes: bool = False,
         document: bool = True,
+        wandb_project: str = None,
         adjust_free: bool = False,
         group_pricing: bool = False,
         num_parallel: int = 1,
@@ -45,17 +47,25 @@ class Experiment:
         Class to run individual experiments.
         :param agent: Agent specification (Path to JSON-file)
         :param num_episodes: Number of episodes to run.
-        :param batch_agent_calls: Whether or not agent calls are run in batches.
+        :param args: Arguments experiment has been called with.
+        :param batch_agent_calls: Whether agent calls are run in batches.
+        :param sync_episodes: Whether all parallel environment are synced.
         :param document: Boolean if model outputs are to be saved.
+        :param wandb_project: Name of Weights and Biases Project results are looged to.
+        :param adjust_free: Whether the agent adjusts prices freely between 0 and 10€ or incrementally.
+        :param group_pricing: Whether prices are set for different income groups individually (per CPZ).
         :param num_parallel: Number of environments to run in parallel.
         :param reward_key: Key to choose reward function.
-        :param eval: Whether or not to use one core for evaluation (necessary for evaluation phase).
-        :param zip: Whether or not to zip the experiment directory.
-        :param test:
+        :param checkpoint: Timestamp of checkpoint to resume.
+        :param use_newest_checkpoint: Whether to use the newest checkpoint for the given reward function.
+        :param eval: Whether to use one core for evaluation (necessary for evaluation phase).
+        :param zip: Whether to zip the experiment directory.
+        :param test: Whether to run in test mode.
         :param model_size: Model size to run experiments with, either "training" or "evaluation".
-        :param nl_path: Path to NetLogo Installation (for Linux users)
-        :param gui: Whether or not NetLogo UI is shown during episodes.
+        :param nl_path: Path to NetLogo directory (for Linux users).
+        :param gui: Whether NetLogo UI is shown during episodes.
         """
+
         self.num_episodes = num_episodes
         self.batch_agent_calls = batch_agent_calls
         self.sync_episodes = sync_episodes
@@ -72,7 +82,9 @@ class Experiment:
             self.timestamp = checkpoint
         elif checkpoint is None and use_newest_checkpoint:
             self.resume_checkpoint = True
-            runs = glob(str(Path(".").absolute().parent / "results" / reward_key) +"/*" )
+            runs = glob(
+                str(Path(".").absolute().parent / "results" / reward_key) + "/*"
+            )
             latest_run = max(runs, key=os.path.getctime).split("\\")[-1]
             self.timestamp = latest_run
             print(f"Resuming latest checkpoint {self.timestamp}")
@@ -85,17 +97,6 @@ class Experiment:
         )
         # Create directory (if it does not exist yet)
         self.outpath.mkdir(parents=True, exist_ok=True)
-        env_kwargs = {
-            "timestamp": self.timestamp,
-            "reward_key": reward_key,
-            "document": self.document,
-            "adjust_free": adjust_free,
-            "group_pricing": group_pricing,
-            "model_size": model_size,
-            "nl_path": nl_path,
-            "gui": gui,
-            "test": test,
-        }
 
         if self.resume_checkpoint:
             agent = dict()
@@ -116,6 +117,29 @@ class Experiment:
         if "summarizer" in agent.keys():
             agent["summarizer"]["directory"] = str(self.outpath / "summarizer")
 
+        if wandb_project is not None:
+            self.wandb = wandb.init(
+                dir=self.outpath / "wandb",
+                job_type="eval" if self.eval else "training",
+                project=wandb_project,
+                config=args,
+                sync_tensorboard=True if "summarizer" in agent.keys() else False,
+            )
+        else:
+            self.wandb = None
+
+        env_kwargs = {
+            "timestamp": self.timestamp,
+            "reward_key": reward_key,
+            "document": self.document,
+            "wandb": self.wandb,
+            "adjust_free": adjust_free,
+            "group_pricing": group_pricing,
+            "model_size": model_size,
+            "nl_path": nl_path,
+            "gui": gui,
+            "test": test,
+        }
         # Create appropriate number of environments
         if num_parallel > 1:
             self.runner = Runner(
