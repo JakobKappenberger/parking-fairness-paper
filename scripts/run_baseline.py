@@ -9,7 +9,7 @@ import numpy as np
 import pyNetLogo
 from tqdm import trange
 
-from util import add_bool_arg, document_episode, label_episodes, delete_unused_episodes
+from src.util import add_bool_arg, document_episode, label_episodes, delete_unused_episodes
 
 COLOURS = ["yellow", "green", "teal", "blue"]
 
@@ -33,7 +33,7 @@ def run_baseline(
     timestamp = datetime.now().strftime("%y%m-%d-%H%M")
     outpath = (
         Path(".").absolute().parent
-        / f"Experiments/baseline {'static' if static else 'dynamic'}"
+        / f"results/baseline {'static' if static else 'dynamic'}"
         / timestamp
     )
     # Connect to NetLogo

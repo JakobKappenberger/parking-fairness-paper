@@ -31,7 +31,7 @@ def occupancy_reward_function(
     Rewards occupancy rates between 75% and 90%. Punishes deviations exponentially.
     :param current_state: State dictionary.
     :param colours: Colours of different CPZs.
-    :param global_mode: Whether or not to use the global occupancies or the one of the individual CPZs.
+    :param global_mode: Whether to use the global occupancies or the one of the individual CPZs.
     :return: reward
     """
     reward = 0

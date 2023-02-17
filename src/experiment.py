@@ -119,8 +119,8 @@ class Experiment:
 
         if wandb_project is not None:
             self.wandb = wandb.init(
-                dir=self.outpath / "wandb",
-                job_type="eval" if self.eval else "training",
+                dir=self.outpath,
+                job_type="eval" if self.checkpoint is None or self.resume_checkpoint else "training",
                 project=wandb_project,
                 config=args,
                 sync_tensorboard=True if "summarizer" in agent.keys() else False,
