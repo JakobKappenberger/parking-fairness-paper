@@ -249,7 +249,7 @@ to setup
     file-print csv:to-row (list "id" "income" "income-group" "wtp" "parking-offender?" "distance-parking-target" "price-paid" "search-time" "wants-to-park" "die?" "reinitialize?")
   ]
   let end-time timer
-  ;show end-time - start-time
+  if debugging [show end-time - start-time]
 end
 
 to setup-finalroads
@@ -311,7 +311,7 @@ to setup-globals
 
   ;;debugging
 
-  reset-timer
+  ;reset-timer
 end
 
 
@@ -1045,7 +1045,7 @@ to-report find-favorite-space ;; polak: parsing the 'fuzzy-weight-list' weight v
     ifelse group-pricing
     [set parking-fee item income-group [group-fees] of lot]
     [set parking-fee [fee] of lot]
-    if not member? lot lots-checked and (parking-offender? or (parking-fee <= wtp)) [                       ;; only compute utilities for lot-ids which have not been checked before
+    if not member? lot lots-checked[ ;and (parking-offender? or (parking-fee <= wtp)) [                       ;; only compute utilities for lot-ids which have not been checked before
       let utility compute-utility lot util-increase
       let tmp list id utility
       set ut-list lput tmp ut-list
@@ -1702,29 +1702,34 @@ to park-car ;;turtle procedure
                                                    ;; check for parking offenders
           let fine-probability compute-fine-prob park-time
           ;; check if parking offender or WTP larger than fee
-          ifelse (parking-offender?)[ ;and (wtp >= ([fee] of patch-at a b * fines-multiplier)* fine-probability ))[
-            set paid? false
-            set expected-fine ([fee] of patch-at a b * fines-multiplier)* fine-probability
-            set city-loss city-loss + parking-fee
+          if wtp >= parking-fee or parking-offender? [
+            ifelse (parking-offender?)[ ;and (wtp >= ([fee] of patch-at a b * fines-multiplier)* fine-probability ))[
+              set paid? false
+              set expected-fine ([fee] of patch-at a b * fines-multiplier)* fine-probability
+              set city-loss city-loss + parking-fee
+            ]
+            [
+              set paid? true
+              set city-income city-income + parking-fee
+              set price-paid parking-fee
+              if price-paid > wtp [
+              print "here"
+              ]
+              ;; keep track of checked lots
+            ]
+            set-car-color
+            move-to patch-at a b
+            set parked? true
+            set outcome utility-value
+            set looks-for-parking? false
+            set nav-prklist []
+            set nav-hastarget? false
+            set fee-income-share (parking-fee / (income / 12)) ;; share of monthly income
+            ask patch-at a b [set car? true]
+            set lots-checked no-patches
+            set distance-parking-target distance nav-goal ;; update distance to goal
+            stop
           ]
-          [
-            set paid? true
-            set city-income city-income + parking-fee
-            set price-paid parking-fee
-            ;; keep track of checked lots
-          ]
-          set-car-color
-          move-to patch-at a b
-          set parked? true
-          set outcome utility-value
-          set looks-for-parking? false
-          set nav-prklist []
-          set nav-hastarget? false
-          set fee-income-share (parking-fee / (income / 12)) ;; share of monthly income
-          ask patch-at a b [set car? true]
-          set lots-checked no-patches
-          set distance-parking-target distance nav-goal ;; update distance to goal
-          stop
         ]
         [
           if not member? patch-at a b lots-checked
@@ -2236,10 +2241,10 @@ end
 ; See Info tab for full copyright and license.
 @#$#@#$#@
 GRAPHICS-WINDOW
-359
-67
-1517
-1510
+280
+10
+1438
+1453
 -1
 -1
 14.2
@@ -2263,10 +2268,10 @@ ticks
 60.0
 
 PLOT
-2929
-785
-3366
-1168
+2301
+327
+2734
+642
 Average Wait Time of Cars
 Time
 Average Wait
@@ -2282,25 +2287,25 @@ PENS
 "Average speed" 1.0 0 -2674135 true "" "plot mean-speed"
 
 SLIDER
-18
-166
-299
-199
+5
+45
+270
+78
 num-cars
 num-cars
 10
 1000
-601.0
+578.0
 5
 1
 NIL
 HORIZONTAL
 
 PLOT
-1538
-68
-1943
-404
+1448
+15
+1854
+311
 Share of Cars per Income Class
 Time
 %
@@ -2314,15 +2319,15 @@ true
 PENS
 "High Income" 1.0 0 -16777216 true "" "if count cars with [income-group = 2] > 0 [plot ((count cars with [income-group = 2] / count cars) * 100)]"
 "Middle Income" 1.0 0 -13791810 true "" "if count cars with [income-group = 1] > 0 [plot ((count cars with [income-group = 1] / count cars) * 100)]"
-"Low Income" 1.0 0 -2674135 true "" "ifelse count cars with [income-group = 0] != 0 [plot ((count cars with [income-group = 0] / count cars) * 100)][plot 0] "
+"Low Income" 1.0 0 -2674135 true "" "ifelse count cars with [income-group = 0] != 0 [plot ((count cars with [income-group = 0] / count cars) * 100)][plot 0]"
 "Share of intially spawned cars" 1.0 0 -7500403 true "" "plot (n-cars) * 100"
 "Entropy" 1.0 0 -955883 true "" "plot income-entropy * 100"
 
 BUTTON
-171
-75
-302
-111
+140
+10
+271
+43
 Go
 go
 T
@@ -2336,10 +2341,10 @@ NIL
 0
 
 BUTTON
-19
-75
-152
-108
+5
+10
+138
+43
 Setup
 setup
 NIL
@@ -2353,10 +2358,10 @@ NIL
 1
 
 SLIDER
-18
-213
-172
-246
+5
+80
+140
+113
 ticks-per-cycle
 ticks-per-cycle
 1
@@ -2368,10 +2373,10 @@ NIL
 HORIZONTAL
 
 SLIDER
-9
-735
-203
-768
+5
+515
+270
+548
 blue-lot-fee
 blue-lot-fee
 0
@@ -2383,10 +2388,10 @@ blue-lot-fee
 HORIZONTAL
 
 SLIDER
-9
-615
-195
-648
+5
+415
+270
+448
 yellow-lot-fee
 yellow-lot-fee
 0
@@ -2398,10 +2403,10 @@ yellow-lot-fee
 HORIZONTAL
 
 SLIDER
-10
-694
-195
-727
+5
+480
+270
+513
 teal-lot-fee
 teal-lot-fee
 0
@@ -2413,10 +2418,10 @@ teal-lot-fee
 HORIZONTAL
 
 SLIDER
-9
-655
-194
-688
+5
+445
+270
+478
 green-lot-fee
 green-lot-fee
 0
@@ -2428,10 +2433,10 @@ green-lot-fee
 HORIZONTAL
 
 PLOT
-1537
-781
-1948
-1156
+1860
+325
+2289
+640
 Utilized Capacity at Different Lots
 Time
 Utilized Capacity in %
@@ -2452,10 +2457,10 @@ PENS
 "Target Range" 1.0 2 -2674135 true "" "plot 75\nplot 90"
 
 MONITOR
-203
-1125
-338
-1170
+2115
+760
+2250
+805
 Mean Income in Model
 mean [income] of cars
 2
@@ -2463,10 +2468,10 @@ mean [income] of cars
 11
 
 SLIDER
-6
-1126
-187
-1159
+10
+620
+270
+653
 pop-median-income
 pop-median-income
 10000
@@ -2478,35 +2483,35 @@ pop-median-income
 HORIZONTAL
 
 SLIDER
-6
-1080
-187
-1113
+10
+585
+270
+618
 pop-mean-income
 pop-mean-income
 0
 50000
-26105.0
+26104.0
 1
 1
 €
 HORIZONTAL
 
 TEXTBOX
-50
-588
-154
-610
+110
+390
+214
+412
 Initial Fees
 15
 0.0
 1
 
 MONITOR
-222
-758
-303
-803
+1947
+830
+2028
+875
 blue-lot-fee
 mean [fee] of blue-lot
 17
@@ -2514,10 +2519,10 @@ mean [fee] of blue-lot
 11
 
 MONITOR
-220
-597
-299
-642
+1942
+675
+2021
+720
 yellow-lot-fee
 mean [fee] of yellow-lot
 17
@@ -2525,10 +2530,10 @@ mean [fee] of yellow-lot
 11
 
 MONITOR
-222
-703
-304
-748
+1944
+781
+2026
+826
 teal-lot-fee
 mean [fee] of teal-lot
 17
@@ -2536,31 +2541,21 @@ mean [fee] of teal-lot
 11
 
 MONITOR
-220
-651
-307
-696
+1942
+729
+2029
+774
 green-lot-fee
 mean [fee] of green-lot
 17
 1
 11
 
-TEXTBOX
-217
-554
-302
-573
-Current Fees
-15
-0.0
-1
-
 PLOT
-2444
-424
-2874
-720
+1862
+15
+2292
+311
 Descriptive Income Statistics
 Time
 Euro
@@ -2577,10 +2572,10 @@ PENS
 "Standard Deviation" 1.0 0 -13791810 true "" "if count cars > 0 [plot standard-deviation [income] of cars ]"
 
 PLOT
-1537
-418
-1945
-717
+1450
+1235
+1855
+1534
 Average Search Time per Income Class
 Time
 Time
@@ -2597,40 +2592,30 @@ PENS
 "Low Income" 1.0 0 -2674135 true "" "ifelse count cars with [income-group = 0] != 0 [plot mean [search-time] of cars with [income-group = 0 and park <= parking-cars-percentage]][plot 0] "
 
 TEXTBOX
-89
-1036
-280
-1086
+65
+555
+256
+580
 Income Distribution
 20
 0.0
 1
 
 TEXTBOX
-25
-560
-175
-585
+85
+362
+235
+387
 Parking Fees
 20
 0.0
 1
 
-TEXTBOX
-123
-134
-273
-159
-Traffic Grid
-20
-0.0
-1
-
 SWITCH
-20
-296
-149
-329
+5
+140
+140
+173
 hide-nodes
 hide-nodes
 0
@@ -2638,10 +2623,10 @@ hide-nodes
 -1000
 
 SLIDER
-22
-358
-268
-391
+5
+200
+270
+233
 lot-distribution-percentage
 lot-distribution-percentage
 0
@@ -2653,10 +2638,10 @@ NIL
 HORIZONTAL
 
 MONITOR
-203
-1075
-338
-1120
+2115
+710
+2250
+755
 Min Income in Model
 min [income] of cars
 2
@@ -2664,10 +2649,10 @@ min [income] of cars
 11
 
 MONITOR
-203
-1179
-337
-1224
+2115
+814
+2249
+859
 Max Income in Model
 Max [income] of cars
 2
@@ -2675,10 +2660,10 @@ Max [income] of cars
 11
 
 SWITCH
-180
-216
-312
-249
+140
+80
+270
+113
 show-goals
 show-goals
 1
@@ -2686,10 +2671,10 @@ show-goals
 -1000
 
 PLOT
-1956
-69
-2428
-406
+1860
+955
+2260
+1230
 Share of parked Cars per Income Class
 Time
 %
@@ -2706,56 +2691,46 @@ PENS
 "Low Income" 1.0 0 -2674135 true "" "ifelse count cars with [parked? = true and park <= parking-cars-percentage and income-group = 0] > 0 [plot (count cars with [parked? = true and income-group = 0] / count cars with [income-group = 0]) * 100][ plot 0]"
 
 SLIDER
-40
-895
-235
-928
+15
+720
+270
+753
 fines-multiplier
 fines-multiplier
 1
 20
-5.0
+4.0
 1
 1
 time(s)
 HORIZONTAL
 
 TEXTBOX
-33
-852
-299
-888
+15
+675
+281
+711
 How high should the fines be in terms of the original hourly fee?
 13
 0.0
 1
 
 MONITOR
-1841
-147
-1941
-192
+1700
+125
+1800
+170
 Number of Cars
 count cars
 17
 1
 11
 
-TEXTBOX
-1898
-37
-2048
-62
-Social Indicators
-20
-0.0
-1
-
 PLOT
-2442
-69
-2874
-409
+1860
+1235
+2265
+1535
 Share of Income Class on Yellow Lot
 Time
 %
@@ -2772,20 +2747,20 @@ PENS
 "Low Income" 1.0 0 -2674135 true "" "ifelse count cars > 0 and count cars-on yellow-lot > 0 [plot (count cars with [([pcolor] of patch-here = [255.0 254.997195 102.02397]) and income-group = 0] / count cars-on yellow-lot) * 100][plot 0]"
 
 TEXTBOX
-34
-941
-274
-989
+20
+770
+260
+818
 How often every hour should one of the lots be controlled?
 13
 0.0
 1
 
 SLIDER
-35
-987
-244
-1020
+20
+815
+270
+848
 controls-per-hour
 controls-per-hour
 1
@@ -2797,10 +2772,10 @@ time(s)
 HORIZONTAL
 
 PLOT
-2458
-781
-2876
-1167
+1448
+323
+1854
+633
 Dynamic Fee of Different Lots
 Time
 Euro
@@ -2818,10 +2793,10 @@ PENS
 "Blue Lot" 1.0 0 -13740902 true "" "plot blue-lot-current-fee"
 
 SWITCH
-19
-256
-167
-289
+5
+110
+140
+143
 demo-mode
 demo-mode
 1
@@ -2829,25 +2804,25 @@ demo-mode
 -1000
 
 SLIDER
-23
-404
-243
-437
+5
+230
+270
+263
 target-start-occupancy
 target-start-occupancy
 0
 1
-0.51
+0.8120698015158538
 0.05
 1
 NIL
 HORIZONTAL
 
 SLIDER
-66
-1299
-238
-1332
+21
+895
+271
+928
 temporal-resolution
 temporal-resolution
 0
@@ -2859,20 +2834,20 @@ NIL
 HORIZONTAL
 
 TEXTBOX
-86
-1253
-236
-1281
+80
+860
+230
+888
 How many ticks should be considered equal to one hour?
 11
 0.0
 1
 
 SLIDER
-24
-443
-196
-476
+140
+170
+270
+203
 num-garages
 num-garages
 0
@@ -2884,10 +2859,10 @@ NIL
 HORIZONTAL
 
 SWITCH
-66
-805
-286
-838
+5
+320
+270
+353
 dynamic-pricing-baseline
 dynamic-pricing-baseline
 0
@@ -2895,25 +2870,25 @@ dynamic-pricing-baseline
 -1000
 
 SLIDER
-23
-482
-225
-515
+5
+260
+270
+293
 parking-cars-percentage
 parking-cars-percentage
 0
 100
-71.68610977879996
+77.73591064639997
 1
 1
 %
 HORIZONTAL
 
 PLOT
-2899
-84
-3328
-384
+2302
+18
+2733
+316
 Vanished Vars per Income Class
 Time
 Cars
@@ -2930,10 +2905,10 @@ PENS
 "High Income" 1.0 0 -16777216 true "" "plot vanished-cars-high"
 
 INPUTBOX
-16
-1371
-273
-1431
+20
+935
+270
+995
 output-turtle-file-path
 test.csv
 1
@@ -2941,10 +2916,10 @@ test.csv
 String
 
 SWITCH
-178
-252
-328
-285
+140
+110
+270
+143
 document-turtles
 document-turtles
 1
@@ -2952,10 +2927,10 @@ document-turtles
 -1000
 
 SLIDER
-21
-524
-205
-557
+5
+290
+270
+323
 demand-curve-intercept
 demand-curve-intercept
 0
@@ -2967,10 +2942,10 @@ NIL
 HORIZONTAL
 
 PLOT
-1539
-1197
-1973
-1477
+2301
+647
+2706
+927
 Demand
 NIL
 NIL
@@ -2985,10 +2960,10 @@ PENS
 "default" 1.0 0 -16777216 true "" "plot parking-cars-percentage"
 
 SWITCH
-176
-295
-355
-328
+140
+140
+270
+173
 group-pricing
 group-pricing
 1
@@ -2996,10 +2971,10 @@ group-pricing
 -1000
 
 PLOT
-1961
-419
-2207
-590
+1448
+640
+1688
+790
 Group Fees Yellow Lot
 NIL
 NIL
@@ -3016,10 +2991,10 @@ PENS
 "High Income" 1.0 0 -16777216 true "" "if group-pricing [plot item 2 [group-fees] of one-of yellow-lot]"
 
 PLOT
-1963
-597
-2213
-753
+1448
+796
+1688
+941
 Group Fees Green Lot
 NIL
 NIL
@@ -3036,10 +3011,10 @@ PENS
 "High Income" 1.0 0 -16777216 true "" "if group-pricing [plot item 2 [group-fees] of one-of green-lot]"
 
 PLOT
-1959
-761
-2214
-906
+1692
+640
+1917
+790
 Group Fees Teal Lot
 NIL
 NIL
@@ -3056,10 +3031,10 @@ PENS
 "High income" 1.0 0 -16777216 true "" "if group-pricing [plot item 2 [group-fees] of one-of teal-lot]"
 
 PLOT
-1959
-919
-2215
-1070
+1692
+796
+1917
+941
 Group Fees Blue Lot
 NIL
 NIL
@@ -3076,10 +3051,10 @@ PENS
 "High Income" 1.0 0 -16777216 true "" "if group-pricing [plot item 2 [group-fees] of one-of blue-lot]"
 
 SLIDER
-18
-1452
-190
-1485
+20
+995
+270
+1028
 min-util
 min-util
 -5
@@ -3091,10 +3066,10 @@ NIL
 HORIZONTAL
 
 PLOT
-2048
-1095
-2357
-1391
+1449
+952
+1854
+1232
 Outcome per Income Class
 NIL
 NIL
@@ -3112,10 +3087,10 @@ PENS
 "Global" 1.0 0 -7500403 true "" "if count cars with [income-group = 0 ] > 0 [plot mean [outcome] of cars with [outcome != -99]]"
 
 SWITCH
-38
-321
-151
-354
+5
+170
+140
+203
 debugging
 debugging
 1
@@ -3571,5 +3546,5 @@ true
 Line -7500403 true 150 150 90 180
 Line -7500403 true 150 150 210 180
 @#$#@#$#@
-0
+1
 @#$#@#$#@
