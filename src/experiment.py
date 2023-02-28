@@ -30,6 +30,7 @@ class Experiment:
         sync_episodes: bool = False,
         document: bool = True,
         wandb_project: str = None,
+        wandb_entity: str = None,
         adjust_free: bool = False,
         group_pricing: bool = False,
         num_parallel: int = 1,
@@ -51,7 +52,8 @@ class Experiment:
         :param batch_agent_calls: Whether agent calls are run in batches.
         :param sync_episodes: Whether all parallel environment are synced.
         :param document: Boolean if model outputs are to be saved.
-        :param wandb_project: Name of Weights and Biases Project results are looged to.
+        :param wandb_entity: Name of Weights and Biases Entity results are logged to.
+        :param wandb_project: Name of Weights and Biases Project results are logged to.
         :param adjust_free: Whether the agent adjusts prices freely between 0 and 10€ or incrementally.
         :param group_pricing: Whether prices are set for different income groups individually (per CPZ).
         :param num_parallel: Number of environments to run in parallel.
@@ -120,8 +122,9 @@ class Experiment:
         if wandb_project is not None:
             self.wandb = wandb.init(
                 dir=self.outpath,
-                job_type="eval" if self.checkpoint is None or self.resume_checkpoint else "training",
+                job_type="eval" if self.checkpoint is not None or self.resume_checkpoint else "training",
                 project=wandb_project,
+                entity=wandb_entity,
                 config=args,
                 sync_tensorboard=True if "summarizer" in agent.keys() else False,
             )

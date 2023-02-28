@@ -39,11 +39,16 @@ if __name__ == "__main__":
         help="Path to NetLogo directory (for Linux Users)",
     )
     parser.add_argument(
-        "-wb",
         "--wandb_project",
         type=str,
         default=None,
         help="Weights and Biases project to log run at",
+    )
+    parser.add_argument(
+        "--wandb_entity",
+        type=str,
+        default=None,
+        help="Weights and Biases entity to log run at",
     )
     add_bool_arg(parser, "batch_agent_calls")
     add_bool_arg(parser, "sync_episodes")
@@ -67,6 +72,7 @@ if __name__ == "__main__":
         reward_key=args.reward_key,
         document=args.document,
         wandb_project=args.wandb_project,
+        wandb_entity=args.wandb_entity,
         adjust_free=args.adjust_free,
         group_pricing=args.group_pricing,
         checkpoint=args.checkpoint,
