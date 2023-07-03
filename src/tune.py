@@ -359,8 +359,8 @@ def main():
     if agent["entropy_regularization"] < 1e-5:
         agent["entropy_regularization"] = 0.0
 
-    with open(f"ppo_agent_{args.reward_key}_{'group-pricing' if args.group_pricing else 'zone_pricing'}.json", "w") as outfile:
-        json.dump(agent, outfile)
+    with open(os.path.join(directory, f"ppo_agent_{args.reward_key}_{'group-pricing' if args.group_pricing else 'zone_pricing'}.json"), "w") as outfile:
+        json.dump(agent, outfile, indent="")
     print("Runs:", results.get_runs_by_id(config_id=results.get_incumbent_id()))
     print(
         "A total of {} unique configurations where sampled.".format(

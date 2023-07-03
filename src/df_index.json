@@ -58,7 +58,7 @@
     ]
   },
   "vanished_cars": {
-    "title": "\"Vanished Vars per Income Class\"",
+    "title": "\"Vanished Cars per Income Class\"",
     "offset": 10,
     "cols": [
       "share_v_low",

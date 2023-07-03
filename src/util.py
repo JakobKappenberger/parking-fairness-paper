@@ -448,6 +448,38 @@ def save_plots(outpath: Path, episode_path: str):
     ]:
         func(data_df, outpath)
 
+    turtle_df_path = episode_path.replace(".pkl", "_turtles.pkl")
+    try:
+        turtle_df = pd.read_pickle(turtle_df_path, compression="zip")
+        turtle_df.loc[:, "space-type"] = turtle_df.loc[:, "space-type"].replace(
+            {"curb": 0, "garage": 1}
+        )
+
+        turtle_plot_path = outpath / "turtle_plots"
+        turtle_plot_path.mkdir(parents=True, exist_ok=True)
+        for group in ["income-group", "parking-strategy", "purpose"]:
+            plot_space_attributes_grouped(
+                turtle_df=turtle_df, group=group, outpath=turtle_plot_path
+            )
+            plot_average_attribute_grouped(
+                turtle_df=turtle_df,
+                group=group,
+                attribute="price-paid",
+                outpath=turtle_plot_path,
+            )
+            plot_average_attribute_grouped(
+                turtle_df=turtle_df,
+                group=group,
+                attribute="outcome",
+                outpath=turtle_plot_path,
+            )
+            plot_space_type_grouped(
+                turtle_df=turtle_df, group=group, outpath=turtle_plot_path
+            )
+
+    except FileNotFoundError:
+        print("No turtle DataFrame found!")
+
 
 def plot_fees(data_df, outpath):
     """
@@ -516,7 +548,6 @@ def plot_group_fees(data_df, outpath):
     """
     for color in ["yellow", "green", "teal", "blue"]:
         if f"fee_{color}_middle" in data_df.columns:
-            print(True)
             # Save plot with three variants of legend location
             for loc in ["lower right", "right", "upper right"]:
                 fig, ax = plt.subplots(1, 1, figsize=(20, 8), dpi=300)
@@ -877,28 +908,28 @@ def plot_share_vanished(data_df, outpath):
         color_list = [cm.bamako(0), cm.bamako(1.0 * 1 / 2), cm.bamako(1.0)]
         ax.plot(
             data_df.x,
-            data_df.share_v_low / (data_df.low_income[0] / 100 * 525),
+            data_df.share_v_low,
             label="Low Income",
             linewidth=3,
             color=color_list[0],
         )
         ax.plot(
             data_df.x,
-            data_df.share_v_middle / (data_df.middle_income[0] / 100 * 525),
+            data_df.share_v_middle,
             label="Middle Income",
             linewidth=3,
             color=color_list[1],
         )
         ax.plot(
             data_df.x,
-            data_df.share_v_high / (data_df.high_income[0] / 100 * 525),
+            data_df.share_v_high,
             label="High Income",
             linewidth=3,
             color=color_list[2],
         )
-        ax.set_ylim(bottom=0, top=1.01)
+        #ax.set_ylim(bottom=0, top=1.01)
 
-        ax.set_ylabel("Normalized Share of Cars Vanished", fontsize=30)
+        ax.set_ylabel(" Share of Cars Vanished", fontsize=30)
         ax.grid(True)
         ax.tick_params(axis="both", labelsize=25)
         ax.set_xlabel("Time of Day", fontsize=30)
@@ -961,6 +992,192 @@ def plot_outcomes(data_df, outpath):
 
         fig.savefig(str(outpath / f"outcomes_{loc}.pdf"), bbox_inches="tight")
         plt.close(fig)
+
+
+def plot_space_attributes_grouped(turtle_df, group: str, outpath: Path):
+    """
+    Plots attributes of found parking spaces (access, search, egress) across different groups.
+    :param turtle_df: DataFrame with data of turtles from current episode.
+    :param group: Group to use for grouping the data.
+    :param outpath: Path to save plot.
+    :return:
+    """
+    turtle_df = turtle_df.loc[
+        (turtle_df["wants-to-park"]) & (turtle_df["reinitialize?"])
+    ]
+    x = np.arange(3)  # the label locations
+    width = 0.25 if group == "income-group" else 0.2  # the width of the bars
+    multiplier = 0
+
+    fig, ax = plt.subplots(1, 1, figsize=(25, 8), dpi=300)
+
+    grouped_df = turtle_df.groupby(group).mean()
+    if group == "income-group":
+        labels = ["Low Income", "Middle Income", "High Income"]
+        color_list = [cm.bamako(0), cm.bamako(1.0 * 1 / 2), cm.bamako(1.0)]
+    else:
+        if group == 'parking-strategy':
+            labels = ["Close to Goal", "Garage", "En Route", "Other"]
+        else:
+            labels = ["Job / Education", "Doctor", "Meeting a Friend", "Shopping"]
+        color_list = []
+        n = len(turtle_df[group].unique())
+        for step in range(n):
+            color_list.append(cm.batlow(step / n))
+    for group_name, label, color in zip(
+        sorted(turtle_df[group].unique()), labels, color_list
+    ):
+        offset = width * multiplier
+        rects = ax.bar(
+            x + offset,
+            np.round(
+                grouped_df.loc[group_name, ["egress", "access", "search-time"]]
+                .values.flatten()
+                .tolist(),
+                2,
+            ),
+            width,
+            label=label,
+            color=color,
+        )
+        ax.bar_label(rects, padding=3, fontsize=15)
+        multiplier += 1
+
+    # Add some text for labels, title and custom x-axis tick labels, etc.
+    ax.set_ylabel("Duration in Minutes", fontsize=30)
+    if group == "income-group":
+        ax.set_xticks(ticks=(x + width))
+    else:
+        ax.set_xticks(ticks=(x + 1.5 * width))
+    ax.set_xticklabels(["Egress", "Access", "Search"], fontsize=30)
+    ax.tick_params(axis="both", labelsize=25)
+
+    ax.legend(loc="best", fontsize=25)
+    fig.savefig(
+        str(outpath / f"space_attributes_{group}.pdf"),
+        bbox_inches="tight",
+    )
+    plt.close(fig)
+
+
+def plot_average_attribute_grouped(
+    turtle_df, group: str, attribute: str, outpath: Path
+):
+    """
+    Plots average attribute (paid-fee or outcome) across different groups.
+    :param turtle_df: DataFrame with data of turtles from current episode.
+    :param group: Group to use for grouping the data.
+    :param outpath: Path to save plot.
+    :return:
+    """
+    x = np.arange(len(turtle_df[group].unique()))  # the label locations
+
+    fig, ax = plt.subplots(1, 1, figsize=(20, 8), dpi=300)
+
+    if attribute == "price-paid":
+        turtle_df = turtle_df.loc[
+            (turtle_df["wants-to-park"])
+            & (turtle_df["reinitialize?"])
+            & (~turtle_df["parking-offender?"])
+        ]
+    else:
+        turtle_df = turtle_df.loc[
+            (turtle_df["wants-to-park"]) & (turtle_df["outcome"] != -99)
+        ]
+
+    grouped_df = turtle_df.groupby(group).mean()
+
+    if group == "income-group":
+        labels = ["Low Income", "Middle Income", "High Income"]
+        color_list = [cm.bamako(0), cm.bamako(1.0 * 1 / 2), cm.bamako(1.0)]
+    else:
+        if group == 'parking-strategy':
+            labels = ["Close to Goal", "Garage", "En Route", "Other"]
+        else:
+            labels = ["Job / Education", "Doctor", "Meeting a Friend", "Shopping"]
+        color_list = []
+        n = len(turtle_df[group].unique())
+        for step in range(n):
+            color_list.append(cm.batlow(step / n))
+
+    rect = ax.bar(x, np.round(grouped_df[attribute], 2), color=color_list)
+    ax.bar_label(rect, padding=3, fontsize=15)
+
+    # Add some text for labels, title and custom x-axis tick labels, etc.
+    ax.set_ylabel(
+        "Average Fee Paid in €" if attribute == "price-paid" else "Average Utility",
+        fontsize=30,
+    )
+    ax.set_xticks(ticks=(x))
+    ax.set_xticklabels(labels, fontsize=30)
+    ax.tick_params(axis="both", labelsize=25)
+
+    # ax.legend(loc='upper left', ncols=3)
+    # ax.set_ylim(0, 250)
+
+    fig.savefig(
+        str(outpath / f"{attribute}_{group}.pdf"),
+        bbox_inches="tight",
+    )
+    plt.close(fig)
+
+
+def plot_space_type_grouped(turtle_df, group: str, outpath: Path):
+    """
+
+    :param turtle_df:
+    :param group:
+    :param outpath:
+    :return:
+    """
+    x = np.arange(len(turtle_df[group].unique()))  # the label locations
+
+    fig, ax = plt.subplots(1, 1, figsize=(20, 8), dpi=300)
+
+    turtle_df = turtle_df.loc[
+        (turtle_df["wants-to-park"])
+        & (turtle_df["reinitialize?"])
+        & (~turtle_df["parking-offender?"])
+    ]
+
+    grouped_df = turtle_df.groupby(group).mean()
+
+    rect = ax.bar(
+        x, np.round(grouped_df["space-type"], 2), color=cm.acton(0), label="Garage"
+    )
+    ax.bar(
+        x,
+        1 - np.round(grouped_df["space-type"], 2),
+        color=cm.acton(0.5),
+        bottom=grouped_df["space-type"],
+        label="Curb",
+    )
+
+    ax.bar_label(rect, padding=3, fontsize=15)
+
+    # Add some text for labels, title and custom x-axis tick labels, etc.
+    # ax.set_ylabel('Average Fee Paid in €', fontsize=30)
+    ax.set_xticks(ticks=(x))
+
+    if group == "income-group":
+        labels = ["Low Income", "Middle Income", "High Income"]
+    else:
+        if group == 'parking-strategy':
+            labels = ["Close to Goal", "Garage", "En Route", "Other"]
+        else:
+            labels = ["Job / Education", "Doctor", "Meeting a Friend", "Shopping"]
+
+    ax.set_xticklabels(labels, fontsize=30)
+    ax.tick_params(axis="both", labelsize=25)
+
+    ax.legend(loc="best", fontsize=25)
+    # ax.set_ylim(0, 250)
+
+    fig.savefig(
+        str(outpath / f"space_type_{group}.pdf"),
+        bbox_inches="tight",
+    )
+    plt.close(fig)
 
 
 def create_colourbar(fig):
