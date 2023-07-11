@@ -122,7 +122,8 @@ class Experiment:
         if wandb_project is not None:
             self.wandb = wandb.init(
                 dir=self.outpath,
-                job_type="eval" if self.checkpoint is not None or self.resume_checkpoint else "training",
+                job_type="eval" if self.resume_checkpoint else "training",
+                name=f"{reward_key}_{'group' if group_pricing else 'zone'}_{'eval' if checkpoint is not None else 'training'}",
                 project=wandb_project,
                 entity=wandb_entity,
                 config=args,
@@ -189,6 +190,10 @@ class Experiment:
 
         # Close runner
         self.runner.close()
+
+        # Save Experiment output to Weights and Biases
+        if self.wandb is not None:
+            self.wandb.save(f"{str(self.outpath)}/*", policy="now")
 
         # Zip experiment directory
         if self.zip:

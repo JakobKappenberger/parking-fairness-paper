@@ -454,7 +454,7 @@ def save_plots(outpath: Path, episode_path: str):
         turtle_df.loc[:, "space-type"] = turtle_df.loc[:, "space-type"].replace(
             {"curb": 0, "garage": 1}
         )
-
+        turtle_df["space-type"] = turtle_df["space-type"].astype("int32")
         turtle_plot_path = outpath / "turtle_plots"
         turtle_plot_path.mkdir(parents=True, exist_ok=True)
         for group in ["income-group", "parking-strategy", "purpose"]:
@@ -471,6 +471,12 @@ def save_plots(outpath: Path, episode_path: str):
                 turtle_df=turtle_df,
                 group=group,
                 attribute="outcome",
+                outpath=turtle_plot_path,
+            )
+            plot_average_attribute_grouped(
+                turtle_df=turtle_df,
+                group=group,
+                attribute="checked-blocks",
                 outpath=turtle_plot_path,
             )
             plot_space_type_grouped(
@@ -908,28 +914,28 @@ def plot_share_vanished(data_df, outpath):
         color_list = [cm.bamako(0), cm.bamako(1.0 * 1 / 2), cm.bamako(1.0)]
         ax.plot(
             data_df.x,
-            data_df.share_v_low,
+            data_df.share_v_low / 100,
             label="Low Income",
             linewidth=3,
             color=color_list[0],
         )
         ax.plot(
             data_df.x,
-            data_df.share_v_middle,
+            data_df.share_v_middle / 100,
             label="Middle Income",
             linewidth=3,
             color=color_list[1],
         )
         ax.plot(
             data_df.x,
-            data_df.share_v_high,
+            data_df.share_v_high / 100,
             label="High Income",
             linewidth=3,
             color=color_list[2],
         )
-        #ax.set_ylim(bottom=0, top=1.01)
+        # ax.set_ylim(bottom=0, top=1.01)
 
-        ax.set_ylabel(" Share of Cars Vanished", fontsize=30)
+        ax.set_ylabel("Share of Unsuccessful Agents", fontsize=30)
         ax.grid(True)
         ax.tick_params(axis="both", labelsize=25)
         ax.set_xlabel("Time of Day", fontsize=30)
@@ -1016,10 +1022,10 @@ def plot_space_attributes_grouped(turtle_df, group: str, outpath: Path):
         labels = ["Low Income", "Middle Income", "High Income"]
         color_list = [cm.bamako(0), cm.bamako(1.0 * 1 / 2), cm.bamako(1.0)]
     else:
-        if group == 'parking-strategy':
+        if group == "parking-strategy":
             labels = ["Close to Goal", "Garage", "En Route", "Other"]
         else:
-            labels = ["Job / Education", "Doctor", "Meeting a Friend", "Shopping"]
+            labels = ["Job/Education", "Doctor", "Meeting a Friend", "Shopping"]
         color_list = []
         n = len(turtle_df[group].unique())
         for step in range(n):
@@ -1091,7 +1097,7 @@ def plot_average_attribute_grouped(
         labels = ["Low Income", "Middle Income", "High Income"]
         color_list = [cm.bamako(0), cm.bamako(1.0 * 1 / 2), cm.bamako(1.0)]
     else:
-        if group == 'parking-strategy':
+        if group == "parking-strategy":
             labels = ["Close to Goal", "Garage", "En Route", "Other"]
         else:
             labels = ["Job / Education", "Doctor", "Meeting a Friend", "Shopping"]
@@ -1104,8 +1110,14 @@ def plot_average_attribute_grouped(
     ax.bar_label(rect, padding=3, fontsize=15)
 
     # Add some text for labels, title and custom x-axis tick labels, etc.
+    if attribute == "price-paid":
+        y_label = "Average Fee Paid in €"
+    elif attribute == "outcome":
+        y_label = "Average Outcome"
+    else:
+        y_label = "Average Number of Blocks checked"
     ax.set_ylabel(
-        "Average Fee Paid in €" if attribute == "price-paid" else "Average Utility",
+        y_label,
         fontsize=30,
     )
     ax.set_xticks(ticks=(x))
@@ -1162,7 +1174,7 @@ def plot_space_type_grouped(turtle_df, group: str, outpath: Path):
     if group == "income-group":
         labels = ["Low Income", "Middle Income", "High Income"]
     else:
-        if group == 'parking-strategy':
+        if group == "parking-strategy":
             labels = ["Close to Goal", "Garage", "En Route", "Other"]
         else:
             labels = ["Job / Education", "Doctor", "Meeting a Friend", "Shopping"]

@@ -41,6 +41,10 @@ globals
   vanished-cars-middle
   vanished-cars-high
 
+  initial-count-low
+  initial-count-middle
+  initial-count-high
+
   global-occupancy         ;; overall occupancy of all lots
   cars-to-create           ;; number of cars that have to be created to replace those leaving the map
   low-to-create
@@ -99,6 +103,7 @@ cars-own
   parked?       ;; true if the car is parked
   time-parked     ;; time spent parking
   final-access
+  computed-access
   final-egress
   final-type
 
@@ -257,12 +262,16 @@ to setup
 
   ;; for Reinforcement Learning reward function
   set initial-low count cars with [income-group = 0] / count cars
+  ;; for normalization of vanished cars plot
+  set initial-count-low count cars with [income-group = 0]
+  set initial-count-middle count cars with [income-group = 1]
+  set initial-count-high count cars with [income-group = 2]
 
   record-globals
   ;; for documentation of all agents at every timestep
   if document-turtles [
     file-open output-turtle-file-path
-    file-print csv:to-row (list "id" "income" "income-group" "income-interval-survey" "age" "gender" "school-degree" "degree" "wtp" "parking-strategy" "purpose" "parking-offender?" "egress" "access" "space-type" "price-paid" "search-time" "wants-to-park" "die?" "reinitialize?" "outcome")
+    file-print csv:to-row (list "id" "income" "income-group" "income-interval-survey" "age" "gender" "school-degree" "degree" "wtp" "parking-strategy" "purpose" "parking-offender?" "checked-blocks" "egress" "access" "space-type" "price-paid" "search-time" "wants-to-park" "die?" "reinitialize?" "outcome")
   ]
   let end-time timer
   if debugging [show end-time - start-time]
@@ -298,6 +307,8 @@ to setup-globals
   set vanished-cars-low 0
   set vanished-cars-middle 0
   set vanished-cars-high 0
+
+
   set traffic-counter 0
 
   set mean-income 0
@@ -876,9 +887,13 @@ to setup-cars  ;; turtle procedure
 
 
   ;; set parking lot target according to utility function
-  set nav-prklist find-favorite-space      ;; polak: parsing 'fuzzy-weight-list' values to the 'navigate' function
-                                           ;if empty? nav-prklist [die]                                         ;; agent dies when already checked all parking spots
-                                           ;set lot-ids-checked insert-item 0 lot-ids-checked first nav-prklist ;; insert lot-id of current parking target in checked lot-ids list to keep track on which lots have already been visited
+  ifelse wants-to-park [
+
+    set nav-prklist find-favorite-space      ;; polak: parsing 'fuzzy-weight-list' values to the 'navigate' function
+  ]                                        ;if empty? nav-prklist [die]                                         ;; agent dies when already checked all parking spots
+  [                                         ;set lot-ids-checked insert-item 0 lot-ids-checked first nav-prklist ;; insert lot-id of current parking target in checked lot-ids list to keep track on which lots have already been visited
+    set nav-prklist []
+  ]
   set nav-hastarget? false
 
 end
@@ -932,6 +947,8 @@ to initial-park [initial-lot]
       let gateway-y one-of [pycor] of gateways with [lot-id = [lot-id] of current-space]
       set utility-value compute-utility current-space 0
       set outcome utility-value
+      let current-lot park-spaces with [lot-id =   [lot-id] of current-space]
+      set lots-checked (patch-set lots-checked current-lot)
       (foreach [0 0 1 -1] [-1 1 0 0] [[a b]->
         if ((member? patch (gateway-x + a) (gateway-y + b) roads))[
           set direction-turtle [direction] of patch (gateway-x + a) (gateway-y + b)
@@ -961,6 +978,8 @@ to initial-park [initial-lot]
     set nav-hastarget? false
     let parking-fee ([fee] of initial-lot )  ;; compute fee
     set fee-income-share (parking-fee / (income / 12))
+    let current-lot park-spaces with [lot-id =   [lot-id] of initial-lot ]
+    set lots-checked (patch-set lots-checked current-lot)
     ifelse (parking-offender?)
     [
       set paid? false
@@ -1052,49 +1071,14 @@ to-report compute-utility [parking-lot count-passed-spots] ;; polak: parsing the
   let utility 0
   ifelse use-synthetic-population
   [
-    let access-w item 0 logit-weights
-    let search-w item 1 logit-weights
-    let egress-w item 2 logit-weights
-    let fee-w item 3  logit-weights
-    let type-w item 4 logit-weights
-    let access-strategy-interaction-w item 5 logit-weights
-    let search-strategy-interaction-w item 6 logit-weights
-    let egress-strategy-interaction-w item 7 logit-weights
-    let type-strategy-interaction-w item 8 logit-weights
-    let fee-strategy-interaction-w item 9 logit-weights
-    let access-purpose-interaction-w item 10 logit-weights
-    let search-purpose-interaction-w item 11 logit-weights
-    let egress-purpose-interaction-w item 12 logit-weights
-    let type-purpose-interaction-w item 13 logit-weights
-    let fee-purpose-interaction-w item 14 logit-weights
-    let income-fee-interaction-w item 15 logit-weights
-    ;let income-fee-interaction-6-w item 16 logit-weights
-    let gender-w item 16 logit-weights
-
-    (ifelse
-      search > 0 and search < 0.12 [
-        set search 3
-      ]
-      search > 0.12 and search < 0.25 [
-        set search 5
-      ]
-
-      search > 0.25 [
-        set search 10
-      ]
-    )
-    let female 0
-    if gender = 2 [set female 1] ; male is reference class (I know)
-                                 ; compute utility according to survey results (computed via multinomial logit model)
-    set utility (access-w * access) + (access-strategy-interaction-w  * access) + (access-purpose-interaction-w  * access) +
-    (search-w * search) + (search-strategy-interaction-w * search) + (search-purpose-interaction-w * search) +
-    (egress-w * egress) + (egress-strategy-interaction-w * egress) + (egress-purpose-interaction-w * egress) +
-    (type-w * garage) + (type-strategy-interaction-w * garage) + (type-purpose-interaction-w * garage) +
-    (fee-w * price) + (fee-strategy-interaction-w * price) + (fee-purpose-interaction-w * price) + (income-fee-interaction-w * price) + ;((income-fee-interaction-6-w * income-interval-survey) ^ 6) +
-    (gender-w * female)
+    set utility report-utility access search egress price garage traffic
+    ;if length remove-duplicates [lot-id] of lots-checked > 0 [
+      ;show temp-utility-value
+    ;]
     if utility > temp-utility-value [
       set temp-utility-value utility
-      set final-access access
+      set computed-access access
+      set final-access search-time
       set final-egress egress
       ifelse garage = 1 [
         set final-type "garage"
@@ -1142,9 +1126,54 @@ to-report compute-utility [parking-lot count-passed-spots] ;; polak: parsing the
   report utility
 end
 
+to-report report-utility [access search egress price garage traffic]
+  let access-w item 0 logit-weights
+  let search-w item 1 logit-weights
+  let egress-w item 2 logit-weights
+  let fee-w item 3  logit-weights
+  let type-w item 4 logit-weights
+  let access-strategy-interaction-w item 5 logit-weights
+  let search-strategy-interaction-w item 6 logit-weights
+  let egress-strategy-interaction-w item 7 logit-weights
+  let type-strategy-interaction-w item 8 logit-weights
+  let fee-strategy-interaction-w item 9 logit-weights
+  let access-purpose-interaction-w item 10 logit-weights
+  let search-purpose-interaction-w item 11 logit-weights
+  let egress-purpose-interaction-w item 12 logit-weights
+  let type-purpose-interaction-w item 13 logit-weights
+  let fee-purpose-interaction-w item 14 logit-weights
+  let income-fee-interaction-w item 15 logit-weights
+  ;let income-fee-interaction-6-w item 16 logit-weights
+  let gender-w item 16 logit-weights
+  (ifelse
+    traffic > 0 and traffic < 0.12 [
+      set access access * 1.1
+    ]
+    traffic > 0.12 and traffic < 0.25 [
+      set access access * 1.25
+    ]
+
+    traffic > 0.25 [
+      set access access * 1.5
+    ]
+  )
+  let female 0
+  if gender = 2 [set female 1] ; male is reference class (I know)
+                               ; compute utility according to survey results (computed via multinomial logit model)
+  let utility (access-w * access) + (access-strategy-interaction-w  * access) + (access-purpose-interaction-w  * access) +
+  (search-w * search) + (search-strategy-interaction-w * search) + (search-purpose-interaction-w * search) +
+  (egress-w * egress) + (egress-strategy-interaction-w * egress) + (egress-purpose-interaction-w * egress) +
+  (type-w * garage) + (type-strategy-interaction-w * garage) + (type-purpose-interaction-w * garage) +
+  (fee-w * price) + (fee-strategy-interaction-w * price) + (fee-purpose-interaction-w * price) + (income-fee-interaction-w * price) + ;((income-fee-interaction-6-w * income-interval-survey) ^ 6) +
+  (gender-w * female)
+  report utility
+end
+
 ;; Determine parking space that maximizes utility
 to-report find-favorite-space ;; polak: parsing the 'fuzzy-weight-list' weight vector
   let ut-list []
+  ; in case helper value has already been written before
+  set temp-utility-value -99
   let current patch-here
   ;;print "lot-ids-checked"
   ;;print lot-ids-checked
@@ -1209,8 +1238,8 @@ to-report find-favorite-space ;; polak: parsing the 'fuzzy-weight-list' weight v
     ;; compute maximum utility for each agent and save information together with respective lot-id in fav-lot
     set utility-value max-ut
     let fav-lot first filter [elem -> last elem = max-ut] ut-list      ;; favourite parking lot for the respective agent as a list of lot-id and utility
-    let test-list sort-by [[list1 list2] -> last list1 > last list2] ut-list
-    set fav-lot-ids map first test-list
+    let fav-lots-list sort-by [[list1 list2] -> last list1 > last list2] ut-list
+    set fav-lot-ids map first fav-lots-list
     set fav-lot-id (list first fav-lot)                                     ;; lot-id where the agents wants to navigate to saved in a list
                                                                             ;; (for convenience such that we do not need to change other code since before it worked with a list)
   ]
@@ -1468,7 +1497,11 @@ to navigate-road
   ]
   [
     ;is looking for parking
-    if wants-to-park [set looks-for-parking? true]
+    if wants-to-park and not empty? nav-prklist[
+      if [road-section] of patch-here = get-road-section first nav-prklist[
+        set looks-for-parking? true
+      ]
+    ]
     ;car currently has no target
     set nav-hastarget? false
     ; first item from prklist is deleted (has been  visited)
@@ -1508,7 +1541,10 @@ to-report determine-path [start lotID]
     ]
   ]
   let path 0
-  ask start [set path nw:turtles-on-path-to previous]
+  let nodes-on-path 0
+  ask start [
+    set path nw:turtles-on-path-to previous
+  ]
 
   report path
 end
@@ -1528,6 +1564,22 @@ to-report get-closest-node [lotID]
     set closest-node one-of nodes-on neighbors4
   ]
   report closest-node
+end
+
+;; get id of closest road to lot
+to-report get-road-section [lotID]
+  let lotproxy one-of lots with [lot-id = lotID]
+  ;; if lot-id belongs to garage, navigate to gateway
+  if num-garages > 0 [
+    if any? gateways with [lot-id = lotID][
+      set lotproxy gateways with [lot-id = lotID]
+    ]
+  ]
+  let road-patch 0
+  ask lotproxy[
+    set road-patch one-of neighbors4 with [member? self roads]
+  ]
+  report [road-section] of road-patch
 end
 
 ;; compute path length between two nodes in the network
@@ -1834,18 +1886,19 @@ to park-car ;;turtle procedure
         stop
       ]
       if member? (patch-at a b) lots[
-        ifelse not any? cars-at a b [
+        let current-space patch-at a b
+        ifelse not any? cars-on current-space[
           let parking-fee 0
           ifelse group-pricing
-          [set parking-fee item income-group [group-fees] of patch-at a b ]
-          [set parking-fee [fee] of patch-at a b]  ;; compute fee
+          [set parking-fee item income-group [group-fees] of current-space]
+          [set parking-fee [fee] of current-space]  ;; compute fee
                                                    ;; check for parking offenders
           let fine-probability compute-fine-prob park-time
           ;; check if parking offender or WTP larger than fee
           if use-synthetic-population or wtp >= parking-fee or parking-offender? [
             ifelse (parking-offender?)[ ;and (wtp >= ([fee] of patch-at a b * fines-multiplier)* fine-probability ))[
               set paid? false
-              set expected-fine ([fee] of patch-at a b * fines-multiplier)* fine-probability
+              set expected-fine ([fee] of current-space * fines-multiplier)* fine-probability
               set city-loss city-loss + parking-fee
             ]
             [
@@ -1855,7 +1908,8 @@ to park-car ;;turtle procedure
               ;; keep track of checked lots
             ]
             set-car-color
-            move-to patch-at a b
+            ;show [lot-id] of patch-at a b
+            move-to current-space
             set parked? true
             set outcome utility-value
             set looks-for-parking? false
@@ -1863,15 +1917,17 @@ to park-car ;;turtle procedure
             set nav-hastarget? false
             set fee-income-share (parking-fee / (income / 12)) ;; share of monthly income
             ask patch-at a b [set car? true]
-            set lots-checked no-patches
+            let lot-identifier [lot-id] of current-space ;; value of lot-variable for current lot
+            let current-lot lots with [lot-id = lot-identifier]
+            set lots-checked (patch-set lots-checked current-lot)
             set distance-parking-target distance nav-goal ;; update distance to goal
             stop
           ]
         ]
         [
-          if not member? patch-at a b lots-checked
+          if not member? current-space lots-checked
           [
-            let lot-identifier [lot-id] of patch-at a b ;; value of lot-variable for current lot
+            let lot-identifier [lot-id] of current-space ;; value of lot-variable for current lot
             let current-lot lots with [lot-id = lot-identifier]
             set lots-checked (patch-set lots-checked current-lot)
             update-wtp
@@ -1903,7 +1959,10 @@ to park-in-garage [gateway]
       set nav-prklist []
       set nav-hastarget? false
       set fee-income-share (parking-fee / (income / 12))
-      set lots-checked no-patches
+      ;set lots-checked no-patches
+      let lot-identifier [lot-id] of gateway ;; value of lot-variable for current garage
+      let current-lot park-spaces with [lot-id = lot-identifier]
+      set lots-checked (patch-set lots-checked current-lot)
       stop
     ]
   ]
@@ -1974,8 +2033,24 @@ end
 
 ;; document turtle in csv
 to document-turtle;;
+  ifelse search-time > final-access [
+    set final-access ((search-time - final-access) / temporal-resolution) * 60
+  ]
+  [
+    ifelse search-time = 0 [
+      set final-access computed-access
+    ]
+    [
+      set final-access ((search-time) / temporal-resolution) * 60
+    ]
+  ]
   let converted-search-time (search-time / temporal-resolution) * 60
-  file-print  csv:to-row [(list who income income-group income-interval-survey age gender school-degree degree wtp parking-strategy purpose parking-offender? final-access final-egress final-type price-paid converted-search-time wants-to-park die? reinitialize? outcome)] of self
+  let garage 0
+  if final-type = "garage" [set garage 1]
+  let checked-blocks length remove-duplicates [lot-id] of lots-checked
+  let final-outcome report-utility final-access converted-search-time final-egress price-paid garage 0
+
+  file-print  csv:to-row [(list who income income-group income-interval-survey age gender school-degree degree wtp parking-strategy purpose parking-offender? checked-blocks final-access final-egress final-type price-paid converted-search-time wants-to-park die? reinitialize? outcome)] of self
 end
 
 
@@ -2538,7 +2613,7 @@ num-cars
 num-cars
 10
 1000
-578.0
+595.0
 5
 1
 NIL
@@ -2639,7 +2714,7 @@ yellow-lot-fee
 yellow-lot-fee
 0
 20
-2.0
+2.5
 0.5
 1
 € / hour
@@ -2719,7 +2794,7 @@ pop-median-income
 pop-median-income
 1000
 40000
-2957.0
+2956.0
 1
 1
 €
@@ -2929,9 +3004,9 @@ true
 true
 "" ""
 PENS
-"High Income" 1.0 0 -16777216 true "" "ifelse count cars with [parked? = true and park <= parking-cars-percentage and income-group = 2] > 0 [plot (count cars with [parked? = true and income-group = 2] / count cars with [income-group = 2]) * 100][plot 0]"
-"Middle Income" 1.0 0 -13791810 true "" "ifelse count cars with [parked? = true and park <= parking-cars-percentage and income-group = 1] > 0 [plot (count cars with [parked? = true and income-group = 1] / count cars with [income-group = 1]) * 100][plot 0]"
-"Low Income" 1.0 0 -2674135 true "" "ifelse count cars with [parked? = true and park <= parking-cars-percentage and income-group = 0] > 0 [plot (count cars with [parked? = true and income-group = 0] / count cars with [income-group = 0]) * 100][ plot 0]"
+"High Income" 1.0 0 -16777216 true "" "ifelse count cars with [parked? = true and park <= parking-cars-percentage and income-group = 2] > 0 [plot (count cars with [parked? = true and income-group = 2] / count cars with [income-group = 2 and wants-to-park]) * 100][plot 0]"
+"Middle Income" 1.0 0 -13791810 true "" "ifelse count cars with [parked? = true and park <= parking-cars-percentage and income-group = 1] > 0 [plot (count cars with [parked? = true and income-group = 1] / count cars with [income-group = 1 and wants-to-park]) * 100][plot 0]"
+"Low Income" 1.0 0 -2674135 true "" "ifelse count cars with [parked? = true and park <= parking-cars-percentage and income-group = 0] > 0 [plot (count cars with [parked? = true and income-group = 0] / count cars with [income-group = 0 and wants-to-park]) * 100][ plot 0]"
 
 SLIDER
 15
@@ -3070,7 +3145,7 @@ temporal-resolution
 temporal-resolution
 0
 3600
-1800.0
+1700.0
 100
 1
 NIL
@@ -3132,20 +3207,20 @@ PLOT
 18
 2733
 316
-Vanished Cars per Income Class
+Share of Vanished Cars per Income Class
 Time
-Cars
+%
 0.0
 10.0
 0.0
-10.0
+100.0
 true
 true
 "" ""
 PENS
-"Low Income" 1.0 0 -2674135 true "" "plot vanished-cars-low"
-"Middle Income" 1.0 0 -13345367 true "" "plot vanished-cars-middle"
-"High Income" 1.0 0 -16777216 true "" "plot vanished-cars-high"
+"Low Income" 1.0 0 -2674135 true "" "if initial-count-low > 0 [ plot (vanished-cars-low / initial-count-low) * 100]"
+"Middle Income" 1.0 0 -13345367 true "" "if initial-count-middle  > 0 [plot (vanished-cars-middle / initial-count-middle) * 100]"
+"High Income" 1.0 0 -16777216 true "" "if initial-count-high  > 0 [plot (vanished-cars-high / initial-count-high) * 100]"
 
 INPUTBOX
 20
@@ -3165,7 +3240,7 @@ SWITCH
 143
 document-turtles
 document-turtles
-1
+0
 1
 -1000
 
