@@ -983,6 +983,7 @@ to initial-park [initial-lot]
     ifelse (parking-offender?)
     [
       set paid? false
+      set price-paid 0
     ]
     [
       set paid? true
@@ -1898,6 +1899,7 @@ to park-car ;;turtle procedure
           if use-synthetic-population or wtp >= parking-fee or parking-offender? [
             ifelse (parking-offender?)[ ;and (wtp >= ([fee] of patch-at a b * fines-multiplier)* fine-probability ))[
               set paid? false
+              set price-paid 0
               set expected-fine ([fee] of current-space * fines-multiplier)* fine-probability
               set city-loss city-loss + parking-fee
             ]
@@ -2048,9 +2050,16 @@ to document-turtle;;
   let garage 0
   if final-type = "garage" [set garage 1]
   let checked-blocks length remove-duplicates [lot-id] of lots-checked
-  let final-outcome report-utility final-access converted-search-time final-egress price-paid garage 0
+  let final-outcome 0
+  ifelse wants-to-park and reinitialize? [
+    set final-outcome report-utility final-access converted-search-time final-egress price-paid garage 0
+  ]
+  [
+    set final-outcome outcome
+  ]
 
-  file-print  csv:to-row [(list who income income-group income-interval-survey age gender school-degree degree wtp parking-strategy purpose parking-offender? checked-blocks final-access final-egress final-type price-paid converted-search-time wants-to-park die? reinitialize? outcome)] of self
+
+  file-print  csv:to-row [(list who income income-group income-interval-survey age gender school-degree degree wtp parking-strategy purpose parking-offender? checked-blocks final-access final-egress final-type price-paid converted-search-time wants-to-park die? reinitialize? final-outcome)] of self
 end
 
 
@@ -3240,7 +3249,7 @@ SWITCH
 143
 document-turtles
 document-turtles
-0
+1
 1
 -1000
 
