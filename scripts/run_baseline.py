@@ -9,7 +9,12 @@ import numpy as np
 import pyNetLogo
 from tqdm import trange
 
-from src.util import add_bool_arg, document_episode, label_episodes, delete_unused_episodes
+from src.util import (
+    add_bool_arg,
+    document_episode,
+    label_episodes,
+    delete_unused_episodes,
+)
 
 COLOURS = ["yellow", "green", "teal", "blue"]
 
@@ -30,20 +35,23 @@ def run_baseline(
     :param static: Use static baseline.
     :return:
     """
+
     timestamp = datetime.now().strftime("%y%m-%d-%H%M")
     outpath = (
         Path(".").absolute().parent
         / f"results/baseline {'static' if static else 'dynamic'}"
         / timestamp
     )
+    # Create directory
+    outpath.mkdir(parents=True, exist_ok=True)
     # Connect to NetLogo
     if platform.system() == "Linux":
         nl = pyNetLogo.NetLogoLink(gui=gui, netlogo_home=nl_path, netlogo_version="6.2")
     else:
         nl = pyNetLogo.NetLogoLink(gui=gui)
-    nl.load_model("Model.nlogo")
+    nl.load_model("../src/Model.nlogo")
     # Load model parameters
-    with open("model_config.json", "r") as fp:
+    with open("../src/model_config.json", "r") as fp:
         model_config = json.load(fp=fp)
 
     print(f"Configuring model size for {model_size}")
@@ -66,8 +74,14 @@ def run_baseline(
     share_cruising_counter = []
     scores = [0] * num_episodes
 
+
     for i in trange(num_episodes):
         episode_cruising = []
+        nl.command("set document-turtles true")
+        process_id = i
+        open(outpath / f"turtles_{process_id}.csv", "w").close
+        turtle_file_path = str(outpath / f"turtles_{process_id}.csv").replace("\\", "/")
+        nl.command(f'set output-turtle-file-path "{turtle_file_path}"')
         nl.command("setup")
         # nl.command(f'set parking-cars-percentage {p(8) * 100}')
         # Disable rendering of view
@@ -89,7 +103,11 @@ def run_baseline(
                 occup = nl.report(f"{c}-lot-current-occup")
                 if 0.75 < occup < 0.9:
                     scores[i] += 0.25
-        document_episode(nl=nl, path=outpath, reward_sum=scores[i])
+        # nl.command(
+        #     "ask cars [document-turtle]"
+        # )  # ask remaining turtles to document
+        nl.command("file-close")  # close stream of turtle.csv
+        document_episode(nl=nl, path=outpath, reward_sum=scores[i], uuid=process_id)
         traffic_counter.append(nl.report("traffic-counter"))
         share_cruising_counter.append(np.mean(episode_cruising))
         print(i)
