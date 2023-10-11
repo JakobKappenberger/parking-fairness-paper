@@ -6,8 +6,8 @@ from pathlib import Path
 import numpy as np
 import pyNetLogo
 
-import gym
-from gym import spaces
+import gymnasium as gym
+from gymnasium import spaces
 from src.util import (
     occupancy_reward_function,
     n_cars_reward_function,
@@ -32,7 +32,7 @@ REWARD_FUNCTIONS = {
 }
 
 
-class GymEnvironment(gym.Env):
+class ParkingEnvironment(gym.Env):
     metadata = {"render_modes": ["human"]}
 
     def __init__(
@@ -69,7 +69,7 @@ class GymEnvironment(gym.Env):
         )
         # Unique id to identify Process
         self.uuid = uuid.uuid4()
-        self.finished = False
+        self.truncated = False
         self.episode_end = False
         self.document = document
         self.adjust_free = adjust_free
@@ -80,18 +80,18 @@ class GymEnvironment(gym.Env):
         self.reward_sum = 0
         # Load model parameters
         config_path = Path(__file__).with_name("model_config.json")
-        with open("model_config.json", "r") as fp:
+        with open(config_path, "r") as fp:
             model_config = json.load(fp=fp)
         # Connect to NetLogo
         if platform.system() == "Linux":
             self.nl = pyNetLogo.NetLogoLink(
-                gui=render_mode if render_mode is not None else False,
+                gui=True if render_mode is not None else False,
                 netlogo_home=nl_path,
                 netlogo_version="6.2",
             )
         else:
             self.nl = pyNetLogo.NetLogoLink(
-                gui=render_mode if render_mode is not None else False
+                gui=True if render_mode is not None else False
             )
         self.nl.load_model(str(Path(__file__).with_name("Model.nlogo")))
         # Set model size
@@ -144,11 +144,11 @@ class GymEnvironment(gym.Env):
             num_values = 5
         actions = []
         if self.group_pricing:
-            for color in COLOURS:
-                for income_group in ["low", "middle", "high"]:
+            for _ in self.colours:
+                for __ in ["low", "middle", "high"]:
                     actions.append(num_values)
         else:
-            for color in COLOURS:
+            for _ in self.colours:
                 actions.append(num_values)
         return spaces.MultiDiscrete(actions)
 
@@ -188,9 +188,6 @@ class GymEnvironment(gym.Env):
         """
         Query current state of simulation.
         """
-        # Update view in NetLogo once
-        self.nl.command("display")
-        self.nl.command("no-display")
         # Update globals
         self.nl.command("ask one-of cars [record-data]")
         self.current_state["ticks"] = self.nl.report("ticks")
@@ -256,30 +253,6 @@ class GymEnvironment(gym.Env):
         state.append(float(self.current_state["global_outcome_divergence"]))
         state.append(float(self.current_state["intergroup_outcome_divergence"]))
 
-        # if not self.adjust_free:
-        #     action_masks = {}
-        #     updates = [-0.5, -0.25, 0, 0.25, 0.5]
-        #     for c in COLOURS:
-        #         if self.group_pricing:
-        #             for i, group in enumerate(["low", "middle", "high"]):
-        #                 group_key = f"{group}_mask"
-        #                 action_masks[f"{c}_{group_key}"] = np.ones(5, dtype=bool)
-        #                 for j, up in enumerate(updates):
-        #                     if (
-        #                             self.current_state[f"{c}-lot fees"][i] + up < 0
-        #                             or self.current_state[f"{c}-lot fees"][i] + up > 10
-        #                     ):
-        #                         action_masks[f"{c}_{group_key}"][j] = False
-        #         else:
-        #             c_key = f"{c}_mask"
-        #             action_masks[c_key] = np.ones(5, dtype=bool)
-        #             for i, up in enumerate(updates):
-        #                 if (
-        #                         self.current_state[f"{c}-lot fee"] + up < 0
-        #                         or self.current_state[f"{c}-lot fee"] + up > 10
-        #                 ):
-        #                     action_masks[c_key][i] = False
-        #     return dict(state=state, **action_masks)
         return np.array(state, dtype=np.float32)
 
     def reset(self, seed=None):
@@ -290,7 +263,7 @@ class GymEnvironment(gym.Env):
         self.nl.command("set dynamic-pricing-baseline false")
         # Record data
         self.nl.command("ask one-of cars [record-data]")
-        self.finished = False
+        self.truncated = False
         self.episode_end = False
         self.reward_sum = 0
         self.current_state["ticks"] = self.nl.report("ticks")
@@ -302,22 +275,26 @@ class GymEnvironment(gym.Env):
         if self.render_mode == "human":
             self._render_frame()
 
-        return state
+        return state, {"info": "no-info"}
 
     def step(self, actions):
         next_state = self.compute_step(actions)
-        terminated = self.terminal()
+        terminated, truncated = self.terminal()
         reward = self.reward()
         self.reward_sum += reward
 
         if self.render_mode == "human":
             self._render_frame()
 
-        if terminated:
-            print("episode finished!")
+        if terminated and self.document and self.eval:
+            print(self.current_state)
+            self.nl.command(
+                "ask cars [document-turtle]"
+            )  # ask remaining turtles to document
+            self.nl.command("file-close")  # close stream of turtle.csv
+            document_episode(self.nl, self.outpath, self.reward_sum, self.uuid)
 
-        print(reward)
-        return next_state, reward, terminated, {"info": "no-info"}
+        return next_state, reward, terminated, truncated, {"info": "no-info"}
 
     def compute_step(self, actions):
         """
@@ -348,9 +325,9 @@ class GymEnvironment(gym.Env):
         :return:
         """
         self.episode_end = self.current_state["ticks"] >= self.temporal_resolution * 12
-        self.finished = self.current_state["n_cars"] < 0.1
+        self.truncated = self.current_state["n_cars"] < 0.1
 
-        return self.finished or self.episode_end
+        return self.episode_end, self.truncated
 
     def adjust_prices_free(self, actions):
         """
