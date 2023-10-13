@@ -3154,7 +3154,7 @@ temporal-resolution
 temporal-resolution
 0
 3600
-1700.0
+1800.0
 100
 1
 NIL
