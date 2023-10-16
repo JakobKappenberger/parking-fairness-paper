@@ -266,10 +266,10 @@ def label_episodes(path: Path, df: pd.DataFrame, mode: str):
         fn for fn in glob(str(path) + "/E*.pkl") if "turtles" not in str(fn)
     ]
     performances = dict()
-    performances["max"] = np.around(df.rewards.max(), 8)
-    performances["min"] = np.around(df.rewards.min(), 8)
+    performances["max"] = np.around(df.rewards.max(), 6)
+    performances["min"] = np.around(df.rewards.min(), 6)
     performances["median"] = np.around(
-        df.rewards.sort_values(ignore_index=True)[np.ceil(len(df) / 2) - 1], 8
+        df.rewards.sort_values(ignore_index=True)[np.ceil(len(df) / 2) - 1], 6
     )
 
     print(f"Performances for {mode}:")
@@ -1084,8 +1084,9 @@ def plot_average_attribute_grouped(
         turtle_df = turtle_df.loc[
             (turtle_df["wants-to-park"])
             & (turtle_df["reinitialize?"])
-            & (~turtle_df["parking-offender?"])
+            & (~turtle_df["parking-offender?"] & (turtle_df["price-paid"] != -99))
         ]
+
     else:
         turtle_df = turtle_df.loc[
             (turtle_df["wants-to-park"]) & (turtle_df["outcome"] != -99)
