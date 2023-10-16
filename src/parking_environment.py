@@ -62,10 +62,15 @@ class ParkingEnvironment(gym.Env):
         :param eval:
         :param test:
         """
+        time.sleep(np.random.randint(low=0, high=10000) / 1000)
         super().__init__()
         self.timestamp = timestamp
         self.outpath = (
-            Path(".").absolute().parent / "results" / reward_key / self.timestamp
+            Path(".").absolute().parent
+            / "results"
+            / reward_key
+            / ("group" if group_pricing else "zone")
+            / self.timestamp
         )
         # Unique id to identify Process
         self.uuid = uuid.uuid4()
@@ -101,7 +106,7 @@ class ParkingEnvironment(gym.Env):
         # create file and provide path of turtle.csv
         if self.eval and self.document:
             self.nl.command("set document-turtles true")
-            open(self.outpath / f"turtles_{self.uuid}.csv", "w").close
+            open(self.outpath / f"turtles_{self.uuid}.csv", "w").close()
             turtle_file_path = str(self.outpath / f"turtles_{self.uuid}.csv").replace(
                 "\\", "/"
             )
@@ -255,9 +260,8 @@ class ParkingEnvironment(gym.Env):
 
         return np.array(state, dtype=np.float32)
 
-    def reset(self, seed=None):
-
-        # super().reset()
+    def reset(self, seed=None, options=None):
+        super().reset(seed=seed)
         self.nl.command("setup")
         # Turn baseline pricing mechanism off
         self.nl.command("set dynamic-pricing-baseline false")
@@ -285,14 +289,14 @@ class ParkingEnvironment(gym.Env):
 
         if self.render_mode == "human":
             self._render_frame()
-
         if terminated and self.document and self.eval:
-            print(self.current_state)
             self.nl.command(
                 "ask cars [document-turtle]"
             )  # ask remaining turtles to document
             self.nl.command("file-close")  # close stream of turtle.csv
-            document_episode(self.nl, self.outpath, self.reward_sum, self.uuid)
+            document_episode(
+                self.nl, self.outpath, np.round(self.reward_sum, 6), self.uuid
+            )
 
         return next_state, reward, terminated, truncated, {"info": "no-info"}
 
@@ -308,9 +312,9 @@ class ParkingEnvironment(gym.Env):
         # Adjust prices and query state
         if self.adjust_free:
             new_state = self.adjust_prices_free(actions)
-        # else:
-        #     pass
-        #     # new_state = self.adjust_prices_step(actions)
+        else:
+            pass
+            # new_state = self.adjust_prices_step(actions)
 
         return new_state
 
