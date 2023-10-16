@@ -62,7 +62,6 @@ class ParkingEnvironment(gym.Env):
         :param eval:
         :param test:
         """
-        time.sleep(np.random.randint(low=0, high=10000) / 1000)
         super().__init__()
         self.timestamp = timestamp
         self.outpath = (
