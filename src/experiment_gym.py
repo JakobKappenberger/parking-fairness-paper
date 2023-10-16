@@ -194,6 +194,7 @@ class Experiment:
         if self.eval:
             print(f"Evaluating for {self.eval_episodes} episodes")
             self.env_kwargs["eval"] = True
+            self.env_kwargs["document"] = True
             eval_env = make_vec_env(
                 ParkingEnvironment,
                 env_kwargs=self.env_kwargs,
@@ -201,6 +202,12 @@ class Experiment:
                 seed=SEED,
                 vec_env_cls=SubprocVecEnv,
             )
+
+            best_model_path = self.outpath / "log" / "eval" / "model" / "best_model.zip"
+
+            if best_model_path.is_file():
+                self.model.load(best_model_path)
+
             returns = evaluate_policy(
                 model=self.model,
                 env=eval_env,
