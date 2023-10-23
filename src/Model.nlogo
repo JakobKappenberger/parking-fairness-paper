@@ -1059,7 +1059,6 @@ to-report compute-utility [parking-lot count-passed-spots] ;; polak: parsing the
   let search traffic
 
 
-
   let price compute-price parking-lot
   ;; set waiting-time wt-tm    ;; placeholder: commented out based the discussion
   let service [service?] of parking-lot ;; currently service is 0.25 for garages, 0 others
@@ -1161,6 +1160,7 @@ to-report report-utility [access search egress price garage traffic]
   let female 0
   if gender = 2 [set female 1] ; male is reference class (I know)
                                ; compute utility according to survey results (computed via multinomial logit model)
+
   let utility (access-w * access) + (access-strategy-interaction-w  * access) + (access-purpose-interaction-w  * access) +
   (search-w * search) + (search-strategy-interaction-w * search) + (search-purpose-interaction-w * search) +
   (egress-w * egress) + (egress-strategy-interaction-w * egress) + (egress-purpose-interaction-w * egress) +
@@ -1179,7 +1179,7 @@ to-report find-favorite-space ;; polak: parsing the 'fuzzy-weight-list' weight v
   ;;print "lot-ids-checked"
   ;;print lot-ids-checked
 
-  if ((count lots-checked) > (count park-spaces / 2)) or (search-time > temporal-resolution) [
+  if (search-time > temporal-resolution) [
     set reinitialize? false
     set die? true
     set outcome min-util ;; cars will not find parking, get minimum utility
@@ -3384,9 +3384,9 @@ SLIDER
 1078
 min-util
 min-util
--10
-5
--10.0
+-100
+0
+-100.0
 0.5
 1
 NIL
@@ -3811,7 +3811,7 @@ false
 Polygon -7500403 true true 270 75 225 30 30 225 75 270
 Polygon -7500403 true true 30 75 75 30 270 225 225 270
 @#$#@#$#@
-NetLogo 6.2.2
+NetLogo 6.3.0
 @#$#@#$#@
 @#$#@#$#@
 @#$#@#$#@
