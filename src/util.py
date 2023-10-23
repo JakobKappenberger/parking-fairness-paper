@@ -225,7 +225,7 @@ def document_episode(nl, path: Path, reward_sum, uuid):
     )
 
     nl.command(f'export-world "{episode_path}.csv"')
-    nl.command(f'export-view "{episode_path}.png"')
+    # nl.command(f'export-view "{episode_path}.png"')
 
     convert_to_pickle(path=episode_path, new_path=str(episode_path))
     turtle_csv_path = path / f"turtles_{uuid}.csv"
@@ -262,6 +262,8 @@ def label_episodes(path: Path, df: pd.DataFrame, mode: str):
     :param mode: Usually either "training" or "evaluation".
     :return:
     """
+    # Plot turtle data over all runs
+    plot_global_outcomes(path=path)
     episode_files = [
         fn for fn in glob(str(path) + "/E*.pkl") if "turtles" not in str(fn)
     ]
@@ -300,11 +302,16 @@ def label_episodes(path: Path, df: pd.DataFrame, mode: str):
                         new_path / f"{mode}_{metric}_{performances[metric]}_turtles.pkl"
                     ),
                 )
-                os.rename(
-                    episode.replace("pkl", "png"),
-                    str(new_path / f"view_{mode}_{metric}_{performances[metric]}.png"),
-                )
-                episode_files.remove(episode)
+                png_path = episode.replace("pkl", "png")
+                if Path(png_path).is_file():
+                    os.rename(
+                        png_path,
+                        str(
+                            new_path
+                            / f"view_{mode}_{metric}_{performances[metric]}.png"
+                        ),
+                    )
+                    episode_files.remove(episode)
                 break
 
 
@@ -485,6 +492,64 @@ def save_plots(outpath: Path, episode_path: str):
 
     except FileNotFoundError:
         print("No turtle DataFrame found!")
+
+
+def plot_global_outcomes(path: Path):
+    """
+    Plots turtle outcomes over all evaluation samples per income groups, parking strategies and purposes.
+    :param path:
+    :return:
+    """
+    turtle_files = [fn for fn in glob(str(path) + "/E*.pkl") if "turtles" in str(fn)]
+    df_list = []
+    for filename in turtle_files:
+        df = pd.read_pickle(filename, compression="zip")
+        df_list.append(df)
+    concatenated_df = pd.concat(df_list, ignore_index=True)
+    concatenated_df.loc[:, "space-type"] = concatenated_df.loc[:, "space-type"].replace(
+        {"curb": 0, "garage": 1}
+    )
+    concatenated_df["space-type"] = concatenated_df["space-type"].astype("int32")
+    concatenated_df.to_pickle(
+        f"{str(path)}/global_turtle_outcomes.pkl", compression="zip"
+    )
+
+    global_plot_path = path / "global_plots"
+    global_plot_path.mkdir(parents=True, exist_ok=True)
+    for group in ["income-group", "parking-strategy", "purpose"]:
+        plot_space_attributes_grouped(
+            turtle_df=concatenated_df,
+            group=group,
+            outpath=global_plot_path,
+            global_data=True,
+        )
+        plot_average_attribute_grouped(
+            turtle_df=concatenated_df,
+            group=group,
+            attribute="price-paid",
+            outpath=global_plot_path,
+            global_data=True,
+        )
+        plot_average_attribute_grouped(
+            turtle_df=concatenated_df,
+            group=group,
+            attribute="outcome",
+            outpath=global_plot_path,
+            global_data=True,
+        )
+        plot_average_attribute_grouped(
+            turtle_df=concatenated_df,
+            group=group,
+            attribute="checked-blocks",
+            outpath=global_plot_path,
+            global_data=True,
+        )
+        plot_space_type_grouped(
+            turtle_df=concatenated_df,
+            group=group,
+            outpath=global_plot_path,
+            global_data=True,
+        )
 
 
 def plot_fees(data_df, outpath):
@@ -1000,7 +1065,9 @@ def plot_outcomes(data_df, outpath):
         plt.close(fig)
 
 
-def plot_space_attributes_grouped(turtle_df, group: str, outpath: Path):
+def plot_space_attributes_grouped(
+    turtle_df, group: str, outpath: Path, global_data: bool = False
+):
     """
     Plots attributes of found parking spaces (access, search, egress) across different groups.
     :param turtle_df: DataFrame with data of turtles from current episode.
@@ -1060,20 +1127,23 @@ def plot_space_attributes_grouped(turtle_df, group: str, outpath: Path):
 
     ax.legend(loc="best", fontsize=25)
     fig.savefig(
-        str(outpath / f"space_attributes_{group}.pdf"),
+        str(
+            outpath / f"space_attributes_{group}{'_global' if global_data else ''}.pdf"
+        ),
         bbox_inches="tight",
     )
     plt.close(fig)
 
 
 def plot_average_attribute_grouped(
-    turtle_df, group: str, attribute: str, outpath: Path
+    turtle_df, group: str, attribute: str, outpath: Path, global_data: bool = False
 ):
     """
     Plots average attribute (paid-fee or outcome) across different groups.
     :param turtle_df: DataFrame with data of turtles from current episode.
     :param group: Group to use for grouping the data.
     :param outpath: Path to save plot.
+    :param global_data:
     :return:
     """
     x = np.arange(len(turtle_df[group].unique()))  # the label locations
@@ -1129,13 +1199,15 @@ def plot_average_attribute_grouped(
     # ax.set_ylim(0, 250)
 
     fig.savefig(
-        str(outpath / f"{attribute}_{group}.pdf"),
+        str(outpath / f"{attribute}_{group}{'_global' if global_data else ''}.pdf"),
         bbox_inches="tight",
     )
     plt.close(fig)
 
 
-def plot_space_type_grouped(turtle_df, group: str, outpath: Path):
+def plot_space_type_grouped(
+    turtle_df, group: str, outpath: Path, global_data: bool = False
+):
     """
 
     :param turtle_df:
@@ -1187,7 +1259,7 @@ def plot_space_type_grouped(turtle_df, group: str, outpath: Path):
     # ax.set_ylim(0, 250)
 
     fig.savefig(
-        str(outpath / f"space_type_{group}.pdf"),
+        str(outpath / f"space_type_{group}{'_global' if global_data else ''}.pdf"),
         bbox_inches="tight",
     )
     plt.close(fig)
