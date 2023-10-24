@@ -252,8 +252,7 @@ to setup
     let example_car one-of cars with [wants-to-park and not parked?]
     ask example_car [
       set color cyan
-      set nav-prklist find-favorite-space    ;; polak: passing 'fuzzy-weight-list' values into the 'navigate' function
-      set park parking-cars-percentage / 2
+      set nav-prklist find-favorite-space
     ]
     watch example_car
     inspect example_car
@@ -268,7 +267,7 @@ to setup
   set initial-count-high count cars with [income-group = 2]
 
   record-globals
-  ;; for documentation of all agents at every timestep
+  ;; for documentation of all agents once they leave the simulation
   if document-turtles [
     file-open output-turtle-file-path
     file-print csv:to-row (list "id" "income" "income-group" "income-interval-survey" "age" "gender" "school-degree" "degree" "wtp" "parking-strategy" "purpose" "parking-offender?" "checked-blocks" "egress" "access" "space-type" "price-paid" "search-time" "wants-to-park" "die?" "reinitialize?" "outcome")
@@ -465,8 +464,10 @@ to setup-road-sections
     table:put road-space-dict section table:make
     let road-patch one-of roads with [road-section = section]
     let local-node one-of nodes-on road-patch
-    let furthest-space max-one-of park-spaces [get-path-length (local-node) (get-closest-node lot-id)]
-    table:put (table:get road-space-dict section) "max-dist-parking-target" get-path-length (local-node) (get-closest-node [lot-id] of furthest-space)
+    if not use-synthetic-population [
+      let furthest-space max-one-of park-spaces [get-path-length (local-node) (get-closest-node lot-id)]
+      table:put (table:get road-space-dict section) "max-dist-parking-target" get-path-length (local-node) (get-closest-node [lot-id] of furthest-space)
+    ]
     ask local-node [
       foreach (remove-duplicates [lot-id] of park-spaces)  [space ->
         ;let lot one-of lots with [lot-id = id]
@@ -851,14 +852,13 @@ to setup-cars  ;; turtle procedure
   ;let current-node one-of nodes-here
   ;let furthest-space max-one-of park-spaces [get-path-length (current-node) (get-closest-node lot-id)]
   ;set max-dist-parking-target get-path-length (current-node) (get-closest-node [lot-id] of furthest-space)
-  let section [road-section] of patch-here
-  set max-dist-parking-target table:get (table:get road-space-dict section) "max-dist-parking-target"
+
 
   ;; set goals for navigation
   set-navgoal
-  let goal nav-goal
 
-  set max-dist-parking-target distance max-one-of lots [distance goal]
+
+
   ; draw random purpose
   set purpose random 4
 
@@ -866,6 +866,10 @@ to setup-cars  ;; turtle procedure
     set logit-weights report-logit-weights
   ]
   [
+    let section [road-section] of patch-here
+    set max-dist-parking-target table:get (table:get road-space-dict section) "max-dist-parking-target"
+
+    set max-dist-parking-target distance max-one-of lots [distance nav-goal]
     ;; axhausen: setting up default strategy flag value i.e. no switch when the agent is initiated
     set switch-strategy-flag 0
     ;; polak: initializing variables for informed and uninformed agents that are selecting specific strategies
@@ -933,8 +937,15 @@ to initial-park [initial-lot]
     [
       move-to current-space
       ask current-space [set car? true]
-      set paid? true
-      set price-paid parking-fee
+      ifelse (parking-offender?)
+      [
+        set paid? false
+        set price-paid 0
+      ]
+      [
+        set paid? true
+        set price-paid parking-fee
+      ]
       set city-income city-income + parking-fee
       set parked? true
       set looks-for-parking? false
@@ -1028,6 +1039,7 @@ to-report compute-price [parking-lot]
   ;; you have to pay in garages
   ifelse (parking-offender? and not member? parking-lot garages)[; and (wtp >= (parking-fee * fines-multiplier) * fine-probability))[
     set expected-price (parking-fee * fines-multiplier) * fine-probability
+    if expected-price > parking-fee [set expected-price parking-fee]
   ]
   [
     set expected-price parking-fee
@@ -1190,7 +1202,7 @@ to-report find-favorite-space ;; polak: parsing the 'fuzzy-weight-list' weight v
   foreach ((range 1 (lot-counter))) [id ->
     let lot one-of lots with [lot-id = id]
 
-    ;; non-offenders should only consider spots they can afford
+    ;; non-offenders should only consider spots they can afford (not in action anymore)
     let parking-fee 0
     ifelse group-pricing
     [set parking-fee item income-group [group-fees] of lot]
@@ -1223,7 +1235,7 @@ to-report find-favorite-space ;; polak: parsing the 'fuzzy-weight-list' weight v
   ]
   let max-ut max map last ut-list
 
-  ifelse not empty? ut-list and max-ut >= min-util [
+  ifelse not empty? ut-list [ ;and max-ut >= min-util [
     ;; now we need to group the utilities by lot-id and calculate the mean utility over the same lot-ids
     ;let grouped-list table:group-items ut-list [l -> first l] ;; all utilities grouped by their lot-id
     ;let lot-id-list table:keys grouped-list                   ;; list of all possible lot-ids being actual parking lots
@@ -1860,6 +1872,7 @@ to record-globals ;; keep track of all global reporter variables
   if normalized-share-low > 1 [set normalized-share-low 1]
 
   if count cars with [not parked?] > 0 [set share-cruising count cars with [wants-to-park and not parked?] / count cars with [not parked?]]
+  set min-util min [outcome] of cars with [outcome != -99]
   ;set income-entropy compute-income-entropy
 end
 
@@ -1894,10 +1907,10 @@ to park-car ;;turtle procedure
           [set parking-fee item income-group [group-fees] of current-space]
           [set parking-fee [fee] of current-space]  ;; compute fee
                                                    ;; check for parking offenders
-          let fine-probability compute-fine-prob park-time
           ;; check if parking offender or WTP larger than fee
           if use-synthetic-population or wtp >= parking-fee or parking-offender? [
             ifelse (parking-offender?)[ ;and (wtp >= ([fee] of patch-at a b * fines-multiplier)* fine-probability ))[
+              let fine-probability compute-fine-prob park-time
               set paid? false
               set price-paid 0
               set expected-fine ([fee] of current-space * fines-multiplier)* fine-probability
@@ -2723,7 +2736,7 @@ yellow-lot-fee
 yellow-lot-fee
 0
 20
-2.5
+2.0
 0.5
 1
 € / hour
@@ -3386,7 +3399,7 @@ min-util
 min-util
 -100
 0
--100.0
+-11.250703305555632
 0.5
 1
 NIL
