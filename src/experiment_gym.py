@@ -11,19 +11,21 @@ import pandas as pd
 import seaborn as sns
 from cmcrameri import cm
 import wandb
-from gymnasium.envs.registration import register
 
 from stable_baselines3 import PPO
 from stable_baselines3.common.vec_env import SubprocVecEnv
 from stable_baselines3.common.env_util import make_vec_env
 from stable_baselines3.common.evaluation import evaluate_policy
-from stable_baselines3.common.callbacks import EvalCallback
+from stable_baselines3.common.callbacks import (
+    EvalCallback,
+    StopTrainingOnNoModelImprovement,
+)
 from stable_baselines3.common.monitor import load_results
 
 from wandb.integration.sb3 import WandbCallback
 
 from src.parking_environment import ParkingEnvironment
-from src.util import label_episodes, delete_unused_episodes
+from src.util import label_episodes, delete_unused_episodes, linear_schedule
 
 sns.set_style("dark")
 sns.set_context("paper")
@@ -38,8 +40,6 @@ class Experiment:
         train_episodes: int,
         args,
         eval_episodes: int = 50,
-        batch_agent_calls: bool = False,
-        sync_episodes: bool = False,
         document: bool = True,
         wandb_project: str = None,
         wandb_entity: str = None,
@@ -49,6 +49,7 @@ class Experiment:
         reward_key: str = "occupancy",
         checkpoint: str = None,
         eval: bool = False,
+        early_stopping: bool = False,
         zip: bool = False,
         test: bool = False,
         model_size: str = "training",
@@ -70,6 +71,7 @@ class Experiment:
         :param reward_key: Key to choose reward function.
         :param checkpoint: Timestamp of checkpoint to resume.
         :param eval: Whether to use one core for evaluation (necessary for evaluation phase).
+        :param early_stopping: Whether to use early stopping, if no improvements are made after
         :param zip: Whether to zip the experiment directory.
         :param test: Whether to run in test mode.
         :param model_size: Model size to run experiments with, either "training" or "evaluation".
@@ -80,9 +82,12 @@ class Experiment:
         self.train_episodes = train_episodes
         self.eval_episodes = eval_episodes
         self.eval = eval
+        self.early_stopping = early_stopping
         self.zip = zip
         self.document = document
         self.num_parallel = num_parallel
+        with open(agent, "r") as fp:
+            self.ppo_config = json.load(fp=fp)
 
         # Check if checkpoint is given (resume if given)
         if checkpoint is not None:
@@ -134,6 +139,13 @@ class Experiment:
             )
         ]
 
+        if self.early_stopping:
+            self.callbacks.append(
+                StopTrainingOnNoModelImprovement(
+                    max_no_improvement_evals=200, min_evals=500, verbose=1
+                )
+            )
+
         if wandb_project is not None:
             self.wandb = wandb.init(
                 dir=self.outpath,
@@ -165,12 +177,18 @@ class Experiment:
                 "start_method": "spawn"
             },  # Jpype can only handle spawn processes without pipe errors
         )
+        if "lr_schedule" in self.ppo_config.keys() and self.ppo_config["lr_schedule"] == "linear":
+            self.ppo_config["learning_rate"] = linear_schedule(self.ppo_config["learning_rate"])
+            # Remove lr schedule from ppo_config dictionary
+            del self.ppo_config["lr_schedule"]
+
         self.model = PPO(
             "MlpPolicy",
             env=self.venv,
             verbose=1,
-            n_steps=24,
             tensorboard_log=str(self.outpath / "log" / "tensorboard"),
+            # Add arguments from JSON file (learning rate, etc.)
+            **self.ppo_config,
         )
 
     def run(self):
@@ -195,6 +213,7 @@ class Experiment:
             print(f"Evaluating for {self.eval_episodes} episodes")
             self.env_kwargs["eval"] = True
             self.env_kwargs["document"] = True
+            self.env_kwargs["model_size"] = "evaluation"
             eval_env = make_vec_env(
                 ParkingEnvironment,
                 env_kwargs=self.env_kwargs,
@@ -219,8 +238,8 @@ class Experiment:
             self.save_results(mode="eval", eval_results=returns)
 
         # # Delete unused episodes
-        # if self.document:
-        #     delete_unused_episodes(self.outpath)
+        if self.document:
+            delete_unused_episodes(self.outpath)
 
         # Save Experiment output to Weights and Biases
         if self.wandb is not None:
