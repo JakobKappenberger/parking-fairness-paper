@@ -4,7 +4,8 @@ import os
 import re
 from glob import glob
 from pathlib import Path
-from typing import List, Dict
+from typing import List, Dict, Callable, Union
+
 
 import matplotlib
 import matplotlib.pyplot as plt
@@ -1288,3 +1289,24 @@ def create_colourbar(fig):
     cbar.ax.set_ylabel(
         r"$\Leftarrow$ Distance of CPZ to City Center", fontsize=25, loc="top"
     )
+
+# from https://github.com/DLR-RM/rl-baselines3-zoo/blob/master/rl_zoo3/utils.py
+def linear_schedule(initial_value: Union[float, str]) -> Callable[[float], float]:
+    """
+    Linear learning rate schedule.
+
+    :param initial_value: (float or str)
+    :return: (function)
+    """
+    # Force conversion to float
+    initial_value_ = float(initial_value)
+
+    def func(progress_remaining: float) -> float:
+        """
+        Progress will decrease from 1 (beginning) to 0
+        :param progress_remaining: (float)
+        :return: (float)
+        """
+        return progress_remaining * initial_value_
+
+    return func
