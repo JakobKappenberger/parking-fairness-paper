@@ -15,6 +15,8 @@ from pandas.errors import ParserError
 import seaborn as sns
 from cmcrameri import cm
 from scipy.spatial import distance
+import scipy.stats as st
+
 
 sns.set_style("dark")
 sns.set_context("paper")
@@ -268,6 +270,9 @@ def label_episodes(path: Path, df: pd.DataFrame, mode: str):
     episode_files = [
         fn for fn in glob(str(path) + "/E*.pkl") if "turtles" not in str(fn)
     ]
+
+    global_episode_df = create_global_dfs(episode_files)
+    global_episode_df.to_pickle(f"{str(path)}/global_episodes.pkl", compression="zip")
     performances = dict()
     performances["max"] = np.around(df.rewards.max(), 6)
     performances["min"] = np.around(df.rewards.min(), 6)
@@ -312,7 +317,7 @@ def label_episodes(path: Path, df: pd.DataFrame, mode: str):
                             / f"view_{mode}_{metric}_{performances[metric]}.png"
                         ),
                     )
-                    episode_files.remove(episode)
+                episode_files.remove(episode)
                 break
 
 
@@ -425,6 +430,8 @@ def get_data_from_run(episode_path):
         except ParserError:
             print("No group fees recorded")
             i += 1
+    # copy second row (first row only 0)
+    data_df.iloc[0] = data_df.iloc[1]
 
     return data_df
 
@@ -503,10 +510,8 @@ def plot_global_outcomes(path: Path):
     """
     turtle_files = [fn for fn in glob(str(path) + "/E*.pkl") if "turtles" in str(fn)]
     df_list = []
-    for filename in turtle_files:
-        df = pd.read_pickle(filename, compression="zip")
-        df_list.append(df)
-    concatenated_df = pd.concat(df_list, ignore_index=True)
+
+    concatenated_df = create_global_dfs(turtle_files)
     concatenated_df.loc[:, "space-type"] = concatenated_df.loc[:, "space-type"].replace(
         {"curb": 0, "garage": 1}
     )
@@ -1086,6 +1091,22 @@ def plot_space_attributes_grouped(
     fig, ax = plt.subplots(1, 1, figsize=(25, 8), dpi=300)
 
     grouped_df = turtle_df.groupby(group).mean()
+
+    error_dict = {g: [] for g in sorted(turtle_df[group].unique())}
+    for attribute in ["egress", "access", "search-time"]:
+        # Compute confidence intervals for group-specific means
+        confidence_intervals = compute_confidence_intervals(
+            turtle_df=turtle_df, group=group, attribute=attribute
+        )
+        # Error as absolute deviation from mean
+        errors = [
+            np.round(
+                abs(confidence_intervals[i][1] - confidence_intervals[i][0]) / 2, 2
+            )
+            for i in range(len(confidence_intervals))
+        ]
+        for i, g in enumerate(sorted(turtle_df[group].unique())):
+            error_dict[g].append(errors[i])
     if group == "income-group":
         labels = ["Low Income", "Middle Income", "High Income"]
         color_list = [cm.bamako(0), cm.bamako(1.0 * 1 / 2), cm.bamako(1.0)]
@@ -1102,19 +1123,25 @@ def plot_space_attributes_grouped(
         sorted(turtle_df[group].unique()), labels, color_list
     ):
         offset = width * multiplier
+        values = np.round(
+            grouped_df.loc[group_name, ["egress", "access", "search-time"]]
+            .values.flatten()
+            .tolist(),
+            2,
+        )
         rects = ax.bar(
             x + offset,
-            np.round(
-                grouped_df.loc[group_name, ["egress", "access", "search-time"]]
-                .values.flatten()
-                .tolist(),
-                2,
-            ),
+            values,
             width,
             label=label,
             color=color,
+            yerr=error_dict[group_name],
         )
-        ax.bar_label(rects, padding=3, fontsize=15)
+        bar_labels = [
+            f"{values[i]} \u00B1 {error_dict[group_name][i]}"
+            for i in range(len(["egress", "access", "search-time"]))
+        ]
+        ax.bar_label(rects, labels=bar_labels, padding=3, fontsize=15)
         multiplier += 1
 
     # Add some text for labels, title and custom x-axis tick labels, etc.
@@ -1125,7 +1152,8 @@ def plot_space_attributes_grouped(
         ax.set_xticks(ticks=(x + 1.5 * width))
     ax.set_xticklabels(["Egress", "Access", "Search"], fontsize=30)
     ax.tick_params(axis="both", labelsize=25)
-
+    y_bottom, y_top = ax.get_ylim()
+    ax.set_ylim(y_bottom, y_top + 4)
     ax.legend(loc="best", fontsize=25)
     fig.savefig(
         str(
@@ -1178,8 +1206,21 @@ def plot_average_attribute_grouped(
         for step in range(n):
             color_list.append(cm.batlow(step / n))
 
-    rect = ax.bar(x, np.round(grouped_df[attribute], 2), color=color_list)
-    ax.bar_label(rect, padding=3, fontsize=15)
+    # Compute confidence intervals for group-specific means
+    confidence_intervals = compute_confidence_intervals(
+        turtle_df=turtle_df, group=group, attribute=attribute
+    )
+    # Error as absolute deviation from mean
+    y_error = [
+        np.round(abs(confidence_intervals[i][1] - confidence_intervals[i][0]) / 2, 2)
+        for i in range(len(confidence_intervals))
+    ]
+    bar_labels = [
+        f"{np.round(grouped_df[attribute].array[i], 2)} \u00B1 {y_error[i]}"
+        for i in range(len(grouped_df[attribute]))
+    ]
+    rect = ax.bar(x, np.round(grouped_df[attribute], 2), yerr=y_error, color=color_list)
+    ax.bar_label(rect, labels=bar_labels, padding=3, fontsize=15)
 
     # Add some text for labels, title and custom x-axis tick labels, etc.
     if attribute == "price-paid":
@@ -1227,19 +1268,32 @@ def plot_space_type_grouped(
     ]
 
     grouped_df = turtle_df.groupby(group).mean()
+    # Compute confidence intervals for group-specific means
+    confidence_intervals = compute_confidence_intervals(
+        turtle_df=turtle_df, group=group, attribute="space-type"
+    )
+    # Error as absolute deviation from mean
+    y_error = [
+        np.round(abs(confidence_intervals[i][1] - confidence_intervals[i][0]) / 2, 2)
+        for i in range(len(confidence_intervals))
+    ]
+    bar_labels = [
+        f"{np.round(grouped_df['space-type'].array[i], 2)} \u00B1 {y_error[i]}"
+        for i in range(len(grouped_df["space-type"]))
+    ]
 
     rect = ax.bar(
-        x, np.round(grouped_df["space-type"], 2), color=cm.acton(0), label="Garage"
+        x, grouped_df["space-type"], yerr=y_error, color=cm.acton(0), label="Garage"
     )
     ax.bar(
         x,
-        1 - np.round(grouped_df["space-type"], 2),
+        1 - grouped_df["space-type"],
         color=cm.acton(0.5),
         bottom=grouped_df["space-type"],
         label="Curb",
     )
 
-    ax.bar_label(rect, padding=3, fontsize=15)
+    ax.bar_label(rect, labels=bar_labels, padding=3, fontsize=15)
 
     # Add some text for labels, title and custom x-axis tick labels, etc.
     # ax.set_ylabel('Average Fee Paid in €', fontsize=30)
@@ -1266,6 +1320,26 @@ def plot_space_type_grouped(
     plt.close(fig)
 
 
+def compute_confidence_intervals(turtle_df: pd.DataFrame, group: str, attribute: str):
+    """
+    :param turtle_df:
+    :param group:
+    :param attribute:
+    :return:
+    """
+    confidence_intervals = []
+    for g in turtle_df[group].unique():
+        confidence_intervals.append(
+            st.t.interval(
+                0.95,
+                len(turtle_df.loc[turtle_df[group] == g][attribute]) - 1,
+                loc=np.mean(turtle_df.loc[turtle_df[group] == g][attribute]),
+                scale=st.sem(turtle_df.loc[turtle_df[group] == g][attribute]),
+            )
+        )
+    return confidence_intervals
+
+
 def create_colourbar(fig):
     """
     Draws colourbar with colour of different CPZs on given figure.
@@ -1290,6 +1364,7 @@ def create_colourbar(fig):
         r"$\Leftarrow$ Distance of CPZ to City Center", fontsize=25, loc="top"
     )
 
+
 # from https://github.com/DLR-RM/rl-baselines3-zoo/blob/master/rl_zoo3/utils.py
 def linear_schedule(initial_value: Union[float, str]) -> Callable[[float], float]:
     """
@@ -1310,3 +1385,17 @@ def linear_schedule(initial_value: Union[float, str]) -> Callable[[float], float
         return progress_remaining * initial_value_
 
     return func
+
+
+def create_global_dfs(files_list: list):
+    """
+    Concatenates df in file list to one DataFrame.
+    :param files_list: List of df files (assumes pickle format).
+    :return:
+    """
+    df_list = []
+    for filename in files_list:
+        df = pd.read_pickle(filename, compression="zip")
+        df_list.append(df)
+    concatenated_df = pd.concat(df_list, ignore_index=True)
+    return concatenated_df
