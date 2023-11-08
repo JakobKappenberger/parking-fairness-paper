@@ -4,7 +4,7 @@ import uuid
 from pathlib import Path
 
 import numpy as np
-import pyNetLogo
+import pynetlogo
 
 import gymnasium as gym
 from gymnasium import spaces
@@ -19,6 +19,7 @@ from src.util import (
     document_episode,
     compute_jenson_shannon,
 )
+import time
 
 COLOURS = ["yellow", "green", "teal", "blue"]
 REWARD_FUNCTIONS = {
@@ -63,6 +64,7 @@ class ParkingEnvironment(gym.Env):
         :param test:
         """
         super().__init__()
+        time.sleep(np.random.randint(low=0, high=10000) / 1000)
         self.timestamp = timestamp
         self.outpath = (
             Path(".").absolute().parent
@@ -88,14 +90,14 @@ class ParkingEnvironment(gym.Env):
             model_config = json.load(fp=fp)
         # Connect to NetLogo
         if platform.system() == "Linux":
-            self.nl = pyNetLogo.NetLogoLink(
+            self.nl = pynetlogo.NetLogoLink(
                 gui=True if render_mode is not None else False,
                 netlogo_home=nl_path,
-                netlogo_version="6.2",
+                #netlogo_version="6.2",
             )
         else:
-            self.nl = pyNetLogo.NetLogoLink(
-                gui=True if render_mode is not None else False
+            self.nl = pynetlogo.NetLogoLink(
+                gui=True if render_mode is not None else False,
             )
         self.nl.load_model(str(Path(__file__).with_name("Model.nlogo")))
         # Set model size
@@ -261,6 +263,7 @@ class ParkingEnvironment(gym.Env):
 
     def reset(self, seed=None, options=None):
         super().reset(seed=seed)
+        time.sleep(np.random.randint(low=0, high=10000) / 1000)
         self.nl.command("setup")
         # Turn baseline pricing mechanism off
         self.nl.command("set dynamic-pricing-baseline false")
@@ -289,9 +292,9 @@ class ParkingEnvironment(gym.Env):
         if self.render_mode == "human":
             self._render_frame()
         if terminated and self.document and self.eval:
-            self.nl.command(
-                "ask cars [document-turtle]"
-            )  # ask remaining turtles to document
+            # self.nl.command(
+            #     "ask cars [document-turtle]"
+            # )  # ask remaining turtles to document
             self.nl.command("file-close")  # close stream of turtle.csv
             document_episode(
                 self.nl, self.outpath, np.round(self.reward_sum, 6), self.uuid
