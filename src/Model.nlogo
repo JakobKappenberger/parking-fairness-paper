@@ -17,6 +17,7 @@ globals
 
   speed-limit              ;; the maximum speed of the cars
   phase                    ;; keeps track of the phase (traffic lights)
+  num-cars
   num-cars-stopped         ;; the number of cars that are stopped during a single pass thru the go procedure
   city-income              ;; money the city currently makes
   city-loss                ;; money the city loses because people do not buy tickets
@@ -202,11 +203,23 @@ to setup
   set speed-limit 0.9  ;;speed required for somewhat accurate representation
 
   ;; First we ask the patches to draw themselves and set up a few variables
+  random-seed 68159
   setup-patches
+  random-seed new-seed
   ;; set demand appropriate for 8:00 A.M.
   set parking-cars-percentage ((-5.58662028e-04 * 8 ^ 3 + 2.76514862e-02 * 8 ^ 2 + -4.09343614e-01 *  8 +  2.31844786e+00)  + demand-curve-intercept) * 100
 
   set-default-shape cars "car top"
+
+  ; draw random number of num-cars in 10% interval around num-cars
+  let std int (0.1 * num-cars-mean)
+  let drawn-num-cars int (random-normal num-cars-mean std)
+
+  while [drawn-num-cars > (num-cars-mean + std) or  drawn-num-cars < (num-cars-mean - std)]
+  [
+    set drawn-num-cars int (random-normal num-cars-mean std)
+  ]
+  set num-cars drawn-num-cars
 
   if (num-cars > count roads)
   [
@@ -2072,7 +2085,7 @@ to document-turtle;;
   ]
 
 
-  file-print  csv:to-row [(list who income income-group income-interval-survey age gender school-degree degree wtp parking-strategy purpose parking-offender? checked-blocks final-access final-egress final-type price-paid converted-search-time wants-to-park die? reinitialize? final-outcome)] of self
+  file-print  csv:to-row [(list who income income-group income-interval-survey age gender school-degree degree wtp parking-strategy purpose parking-offender? checked-blocks final-egress final-access final-type price-paid converted-search-time wants-to-park die? reinitialize? final-outcome)] of self
 end
 
 
@@ -2631,8 +2644,8 @@ SLIDER
 45
 270
 78
-num-cars
-num-cars
+num-cars-mean
+num-cars-mean
 10
 1000
 595.0
@@ -3399,7 +3412,7 @@ min-util
 min-util
 -100
 0
--11.250703305555632
+-13.189070169845504
 0.5
 1
 NIL
