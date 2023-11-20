@@ -700,7 +700,7 @@ def plot_occup(data_df, outpath):
         ax.plot(
             data_df.x,
             data_df.garages_occup / 100,
-            label="Garage(s)",
+            label="Car Park(s)",
             linewidth=2,
             color="black",
         )
@@ -1112,7 +1112,7 @@ def plot_space_attributes_grouped(
         color_list = [cm.bamako(0), cm.bamako(1.0 * 1 / 2), cm.bamako(1.0)]
     else:
         if group == "parking-strategy":
-            labels = ["Close to Goal", "Garage", "En Route", "Other"]
+            labels = ["Close to Goal", "Car Park", "En Route", "Other"]
         else:
             labels = ["Job/Education", "Doctor", "Meeting a Friend", "Shopping"]
         color_list = []
@@ -1198,7 +1198,7 @@ def plot_average_attribute_grouped(
         color_list = [cm.bamako(0), cm.bamako(1.0 * 1 / 2), cm.bamako(1.0)]
     else:
         if group == "parking-strategy":
-            labels = ["Close to Goal", "Garage", "En Route", "Other"]
+            labels = ["Close to Goal", "Car Park", "En Route", "Other"]
         else:
             labels = ["Job / Education", "Doctor", "Meeting a Friend", "Shopping"]
         color_list = []
@@ -1283,7 +1283,7 @@ def plot_space_type_grouped(
     ]
 
     rect = ax.bar(
-        x, grouped_df["space-type"], yerr=y_error, color=cm.acton(0), label="Garage"
+        x, grouped_df["space-type"], yerr=y_error, color=cm.acton(0), label="Car Park"
     )
     ax.bar(
         x,
@@ -1303,7 +1303,7 @@ def plot_space_type_grouped(
         labels = ["Low Income", "Middle Income", "High Income"]
     else:
         if group == "parking-strategy":
-            labels = ["Close to Goal", "Garage", "En Route", "Other"]
+            labels = ["Close to Goal", "Car Park", "En Route", "Other"]
         else:
             labels = ["Job / Education", "Doctor", "Meeting a Friend", "Shopping"]
 
