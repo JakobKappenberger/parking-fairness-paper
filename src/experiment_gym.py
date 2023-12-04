@@ -13,7 +13,7 @@ from cmcrameri import cm
 import wandb
 
 from stable_baselines3 import PPO
-from stable_baselines3.common.vec_env import SubprocVecEnv
+from stable_baselines3.common.vec_env import SubprocVecEnv, VecNormalize
 from stable_baselines3.common.env_util import make_vec_env
 from stable_baselines3.common.evaluation import evaluate_policy
 from stable_baselines3.common.callbacks import (
@@ -50,6 +50,7 @@ class Experiment:
         checkpoint: str = None,
         eval: bool = False,
         early_stopping: bool = False,
+        normalize: bool = False,
         zip: bool = False,
         test: bool = False,
         model_size: str = "training",
@@ -71,7 +72,8 @@ class Experiment:
         :param reward_key: Key to choose reward function.
         :param checkpoint: Timestamp of checkpoint to resume.
         :param eval: Whether to use one core for evaluation (necessary for evaluation phase).
-        :param early_stopping: Whether to use early stopping, if no improvements are made after
+        :param early_stopping: Whether to use early stopping, if no improvements are made after x episodes.
+        :param normalize: Whether to normalize states and rewards (only during training).
         :param zip: Whether to zip the experiment directory.
         :param test: Whether to run in test mode.
         :param model_size: Model size to run experiments with, either "training" or "evaluation".
@@ -83,6 +85,7 @@ class Experiment:
         self.eval_episodes = eval_episodes
         self.eval = eval
         self.early_stopping = early_stopping
+        self.normalize = normalize
         self.zip = zip
         self.document = document
         self.num_parallel = num_parallel
@@ -127,24 +130,24 @@ class Experiment:
             seed=SEED,
             vec_env_cls=SubprocVecEnv,
         )
+        if self.normalize:
+            eval_env = VecNormalize(eval_env, norm_reward=False, training=False)
 
         self.callbacks = [
             EvalCallback(
                 eval_env,
                 best_model_save_path=str(self.outpath / "log" / "eval" / "model"),
                 log_path=str(self.outpath / "log" / "eval"),
-                eval_freq=48,
+                eval_freq=5 * self.ppo_config["n_steps"],
                 deterministic=True,
                 render=False,
+                callback_after_eval=StopTrainingOnNoModelImprovement(
+                    max_no_improvement_evals=30, min_evals=50, verbose=1
+                )
+                if self.early_stopping
+                else None,
             )
         ]
-
-        if self.early_stopping:
-            self.callbacks.append(
-                StopTrainingOnNoModelImprovement(
-                    max_no_improvement_evals=200, min_evals=500, verbose=1
-                )
-            )
 
         if wandb_project is not None:
             self.wandb = wandb.init(
@@ -177,8 +180,15 @@ class Experiment:
                 "start_method": "spawn"
             },  # Jpype can only handle spawn processes without pipe errors
         )
-        if "lr_schedule" in self.ppo_config.keys() and self.ppo_config["lr_schedule"] == "linear":
-            self.ppo_config["learning_rate"] = linear_schedule(self.ppo_config["learning_rate"])
+        if self.normalize:
+            self.venv = VecNormalize(self.venv)
+        if (
+            "lr_schedule" in self.ppo_config.keys()
+            and self.ppo_config["lr_schedule"] == "linear"
+        ):
+            self.ppo_config["learning_rate"] = linear_schedule(
+                self.ppo_config["learning_rate"]
+            )
             # Remove lr schedule from ppo_config dictionary
             del self.ppo_config["lr_schedule"]
 
@@ -204,6 +214,10 @@ class Experiment:
             progress_bar=True,
             callback=self.callbacks,
         )
+        if self.normalize:
+            self.venv.save(str(self.outpath / "log" / "norm_stats.pkl"))
+            print(self.venv.get_original_obs())
+            print(self.venv.normalize_obs(self.venv.get_original_obs()))
         self.venv.close()
 
         # # Saving results
@@ -217,7 +231,7 @@ class Experiment:
             eval_env = make_vec_env(
                 ParkingEnvironment,
                 env_kwargs=self.env_kwargs,
-                n_envs=1,
+                n_envs=self.num_parallel,
                 seed=SEED,
                 vec_env_cls=SubprocVecEnv,
             )
@@ -226,7 +240,18 @@ class Experiment:
 
             if best_model_path.is_file():
                 self.model.load(best_model_path)
+                print("Best eval model loaded!")
 
+            if self.normalize:
+                eval_env = VecNormalize.load(
+                    str(self.outpath / "log" / "norm_stats.pkl"), eval_env
+                )
+                #  do not update them at test time
+                eval_env.training = False
+                # reward normalization is not needed at test time
+                eval_env.norm_reward = False
+                print(eval_env.get_original_obs())
+                print(eval_env.normalize_obs(eval_env.get_original_obs()))
             returns = evaluate_policy(
                 model=self.model,
                 env=eval_env,

@@ -4,12 +4,15 @@ from argparse import ArgumentParser
 from src.util import add_bool_arg
 
 
-from src.experiment import Experiment
+from src.experiment_gym import Experiment
 
 if __name__ == "__main__":
     parser = ArgumentParser()
     parser.add_argument("agent", type=str, help="Specification (JSON) of Agent to use")
-    parser.add_argument("episodes", type=int, help="Number of episodes")
+    parser.add_argument(
+        "train_episodes", type=int, help="Number of episodes for training"
+    )
+
     parser.add_argument(
         "-p", "--num_parallel", type=int, default=1, help="CPU cores to use"
     )
@@ -50,14 +53,24 @@ if __name__ == "__main__":
         default=None,
         help="Weights and Biases entity to log run at",
     )
-    add_bool_arg(parser, "batch_agent_calls")
-    add_bool_arg(parser, "sync_episodes")
+    parser.add_argument(
+        "--render_mode",
+        type=str,
+        default=None,
+        help="Render mode to use (human or None(default))",
+    )
+
     add_bool_arg(parser, "document", default=True)
     add_bool_arg(parser, "adjust_free", default=True)
     add_bool_arg(parser, "group_pricing", default=False)
     add_bool_arg(parser, "eval", default=False)
+    add_bool_arg(parser, "early_stopping", default=False)
+    add_bool_arg(parser, "normalize", default=False)
+    parser.add_argument(
+        "--eval_episodes", type=int, help="Number of episodes for evaluation", default=50
+    )
+
     add_bool_arg(parser, "zip", default=False)
-    add_bool_arg(parser, "gui", default=False)
     add_bool_arg(parser, "use_newest_checkpoint", default=False)
 
     args = parser.parse_args()
@@ -65,9 +78,7 @@ if __name__ == "__main__":
 
     experiment = Experiment(
         agent=args.agent,
-        num_episodes=args.episodes,
-        batch_agent_calls=args.batch_agent_calls,
-        sync_episodes=args.sync_episodes,
+        train_episodes=args.train_episodes,
         num_parallel=args.num_parallel,
         reward_key=args.reward_key,
         document=args.document,
@@ -76,12 +87,14 @@ if __name__ == "__main__":
         adjust_free=args.adjust_free,
         group_pricing=args.group_pricing,
         checkpoint=args.checkpoint,
-        use_newest_checkpoint=args.use_newest_checkpoint,
         eval=args.eval,
+        eval_episodes=args.eval_episodes,
+        early_stopping=args.early_stopping,
+        normalize=args.normalize,
         zip=args.zip,
         model_size=args.model_size,
         nl_path=args.nl_path,
-        gui=args.gui,
+        render_mode=args.render_mode,
         args=vars(args),
     )
     experiment.run()
