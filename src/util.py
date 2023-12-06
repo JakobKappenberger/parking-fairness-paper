@@ -1141,7 +1141,7 @@ def plot_space_attributes_grouped(
             f"{values[i]} \u00B1 {error_dict[group_name][i]}"
             for i in range(len(["egress", "access", "search-time"]))
         ]
-        ax.bar_label(rects, labels=bar_labels, padding=3, fontsize=15)
+        ax.bar_label(rects, labels=bar_labels, padding=3, fontsize=15 if group == "income-group" else 12)
         multiplier += 1
 
     # Add some text for labels, title and custom x-axis tick labels, etc.
@@ -1153,8 +1153,8 @@ def plot_space_attributes_grouped(
     ax.set_xticklabels(["Egress", "Access", "Search"], fontsize=30)
     ax.tick_params(axis="both", labelsize=25)
     y_bottom, y_top = ax.get_ylim()
-    ax.set_ylim(y_bottom, y_top + 4)
-    ax.legend(loc="best", fontsize=25)
+    ax.set_ylim(y_bottom, y_top + 5)
+    ax.legend(loc="upper left", fontsize=25)
     fig.savefig(
         str(
             outpath / f"space_attributes_{group}{'_global' if global_data else ''}.pdf"
