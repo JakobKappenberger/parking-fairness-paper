@@ -314,7 +314,6 @@ to setup-globals
   set grid-x-inc 15
   set grid-y-inc floor(grid-x-inc * 1.43)
 
-  set n-cars num-cars
 
   set vanished-cars-low 0
   set vanished-cars-middle 0
@@ -1865,7 +1864,7 @@ end
 to record-globals ;; keep track of all global reporter variables
   set mean-income mean [income] of cars
   set median-income median [income] of cars
-  set n-cars count cars / num-cars
+  set n-cars count cars / (num-cars-mean + int (0.1 * num-cars-mean))
   set mean-wait-time mean [wait-time] of cars
   if count cars with [not parked?] > 0 [set mean-speed (mean [speed] of cars with [not parked?]) / speed-limit]
 
@@ -2502,10 +2501,10 @@ end
 
 to-report report-logit-weights []
   let weight-vector []
-  set weight-vector lput -0.0893748 weight-vector ;; access
+  set weight-vector lput (random-normal -0.05 0.06)  weight-vector ;; access
   set weight-vector lput 0 weight-vector ;; search
-  set weight-vector lput (random-normal -0.2329862 0.2188632)  weight-vector ;; egress
-  set weight-vector lput (random-normal -1.0354294 0.7221745)  weight-vector ;; fee
+  set weight-vector lput (random-normal -0.23 0.20)  weight-vector ;; egress
+  set weight-vector lput (random-normal -1.34  0.85)  weight-vector ;; fee
   set weight-vector lput 0 weight-vector ;; type-garage
   let access-strategy-interaction-weight 0
   let search-strategy-interaction-weight 0
@@ -2515,15 +2514,15 @@ to-report report-logit-weights []
   (ifelse
     parking-strategy = 4 [
       ;set search-strategy-interaction-weight random-normal -0.087 0.2
-      set type-strategy-interaction-weight random-normal 1.0272934 1.0473519
-      set fee-strategy-interaction-weight 0.4833433
+      set type-strategy-interaction-weight 0.89
+      set fee-strategy-interaction-weight 0.52
     ]
     parking-strategy = 5 [
-      set egress-strategy-interaction-weight 0.1047587
+      set egress-strategy-interaction-weight 0.10
     ]
     parking-strategy = 7[
-      set egress-strategy-interaction-weight 0.1459745
-      ;set search-strategy-interaction-weight -0.0887736
+      set egress-strategy-interaction-weight 0.11
+      set search-strategy-interaction-weight -0.08
     ]
   )
   set weight-vector lput access-strategy-interaction-weight weight-vector
@@ -2539,17 +2538,21 @@ to-report report-logit-weights []
   let fee-purpose-interaction-weight 0
   (ifelse
     purpose = 1 [ ;doctor
-      set egress-purpose-interaction-weight -0.0815141
-      set fee-purpose-interaction-weight 0.7507345
+      set search-purpose-interaction-weight -0.07
+      set egress-purpose-interaction-weight -0.10
+      set fee-purpose-interaction-weight 0.67
     ]
     purpose = 2 [ ;meeting friends
-      set type-purpose-interaction-weight random-normal 0.3900153 0.0128061
-      set fee-purpose-interaction-weight random-normal 0.2571034  0.4370313
+      set access-purpose-interaction-weight -0.07
+      set egress-purpose-interaction-weight -0.09
+      set type-purpose-interaction-weight 0.40
+      set fee-purpose-interaction-weight 0.24
 
     ]
     purpose = 3 [ ;shopping
-      set egress-purpose-interaction-weight random-normal  -0.1690142  0.163935
-      set fee-purpose-interaction-weight random-normal 0.4643296 0.5836606
+      set egress-purpose-interaction-weight -0.16
+      set type-purpose-interaction-weight 0.33
+      set fee-purpose-interaction-weight 0.51
     ]
   )
   set weight-vector lput access-purpose-interaction-weight weight-vector
@@ -2561,28 +2564,28 @@ to-report report-logit-weights []
   let income-fee-interaction 0
   (ifelse
     income-interval-survey = 2 [
-      set income-fee-interaction -1.7680264
+      set income-fee-interaction -0.85
     ]
     income-interval-survey = 3 [
-      set income-fee-interaction random-normal -1.1011304 0.9414337
+      set income-fee-interaction -0.65
     ]
     income-interval-survey = 4 [
-      set income-fee-interaction random-normal -1.0112628  0.5049523
+      set income-fee-interaction -0.78
     ]
     income-interval-survey = 5 [
-      set income-fee-interaction random-normal -0.9657823  0.6099223
+      set income-fee-interaction -0.68
     ]
     income-interval-survey = 6 [
-      set income-fee-interaction random-normal -0.8719359  0.3795559
+      set income-fee-interaction 0.64
     ]
     income-interval-survey = 7  [
-      set income-fee-interaction -0.7972391
+      set income-fee-interaction 0.57
     ]
   )
 
   set weight-vector lput income-fee-interaction weight-vector ;; income-fee-interaction
                                                               ;set weight-vector lput random-normal 0.1489018  0.8409924  weight-vector ;; ^6-income-fee-interaction
-  set weight-vector lput 0.2414542 weight-vector ;; gender
+  set weight-vector lput 0.21 weight-vector ;; gender
 
 
 
@@ -2648,7 +2651,7 @@ num-cars-mean
 num-cars-mean
 10
 1000
-595.0
+791.0
 5
 1
 NIL
@@ -2673,7 +2676,7 @@ PENS
 "High Income" 1.0 0 -16777216 true "" "if count cars with [income-group = 2] > 0 [plot ((count cars with [income-group = 2] / count cars) * 100)]"
 "Middle Income" 1.0 0 -13791810 true "" "if count cars with [income-group = 1] > 0 [plot ((count cars with [income-group = 1] / count cars) * 100)]"
 "Low Income" 1.0 0 -2674135 true "" "ifelse count cars with [income-group = 0] != 0 [plot ((count cars with [income-group = 0] / count cars) * 100)][plot 0]"
-"Share of intially spawned cars" 1.0 0 -7500403 true "" "plot (n-cars) * 100"
+"Share of intially spawned cars" 1.0 0 -7500403 true "" "if num-cars > 0 [plot (count cars / num-cars) * 100]"
 "Entropy" 1.0 0 -955883 true "" "plot income-entropy * 100"
 
 BUTTON
@@ -2984,7 +2987,7 @@ lot-distribution-percentage
 lot-distribution-percentage
 0
 1
-0.55
+0.74018432269965
 0.05
 1
 NIL
@@ -3165,7 +3168,7 @@ target-start-occupancy
 target-start-occupancy
 0
 1
-0.8120698015158538
+0.8673100497987458
 0.05
 1
 NIL
@@ -3231,7 +3234,7 @@ parking-cars-percentage
 parking-cars-percentage
 0
 100
-77.73591064639997
+77.57332859433056
 1
 1
 %
@@ -3288,7 +3291,7 @@ demand-curve-intercept
 demand-curve-intercept
 0
 0.25
-0.25
+0.24837417947930585
 0.01
 1
 NIL
@@ -3412,7 +3415,7 @@ min-util
 min-util
 -100
 0
--13.189070169845504
+-9.359152772625986
 0.5
 1
 NIL
