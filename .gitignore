@@ -1,1 +1,21 @@
 *.egg-info
+/results
+*/wandb
+*/external/*
+*/summarizer
+*/summarizer4
+*/tuner
+*.pkl
+*.zip
+*.xml
+*.pdf
+*UniversityAdmission*
+*.ipynb
+*.csv
+ # Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+
+/.idea/
