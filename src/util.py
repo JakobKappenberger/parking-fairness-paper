@@ -95,15 +95,14 @@ def speed_reward_function(colours: List[str], current_state: Dict[str, float]):
 
 def composite_reward_function(colours: List[str], current_state: Dict[str, float]):
     """
-    Maximizes 1/2 occupancy_reward_function + 1/4 n_cars_reward_function + 1/4 social_reward_function
+    Maximizes 1/2 occupancy_reward_function + 1/2 intergroup_outcome_reward_function
     :param colours: Colours of different CPZs (only present to be able to use one call in custom_environment.py).
     :param current_state:State dictionary.
     :return: reward
     """
     return (
-        0.5 * occupancy_reward_function(colours, current_state, global_mode=True)
-        + 0.25 * n_cars_reward_function(colours, current_state)
-        + 0.25 * social_reward_function(colours, current_state)
+        0.5 * occupancy_reward_function(colours, current_state)
+        + 0.5 * intergroup_outcome_reward_function(colours, current_state)
     )
 
 
@@ -1141,7 +1140,12 @@ def plot_space_attributes_grouped(
             f"{values[i]} \u00B1 {error_dict[group_name][i]}"
             for i in range(len(["egress", "access", "search-time"]))
         ]
-        ax.bar_label(rects, labels=bar_labels, padding=3, fontsize=15 if group == "income-group" else 12)
+        ax.bar_label(
+            rects,
+            labels=bar_labels,
+            padding=3,
+            fontsize=15 if group == "income-group" else 12,
+        )
         multiplier += 1
 
     # Add some text for labels, title and custom x-axis tick labels, etc.
