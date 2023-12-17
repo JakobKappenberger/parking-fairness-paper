@@ -41,6 +41,13 @@ if __name__ == "__main__":
         default=None,
         help="Path to NetLogo directory (for Linux Users)",
     )
+
+    parser.add_argument(
+        "--model_path",
+        type=str,
+        default=None,
+        help="Path to NetLogo Simulation",
+    )
     parser.add_argument(
         "--wandb_project",
         type=str,
@@ -66,6 +73,8 @@ if __name__ == "__main__":
     add_bool_arg(parser, "eval", default=False)
     add_bool_arg(parser, "early_stopping", default=False)
     add_bool_arg(parser, "normalize", default=False)
+    add_bool_arg(parser, "fine_tuning", default=False)
+
     parser.add_argument(
         "--eval_episodes", type=int, help="Number of episodes for evaluation", default=50
     )
@@ -91,8 +100,10 @@ if __name__ == "__main__":
         eval_episodes=args.eval_episodes,
         early_stopping=args.early_stopping,
         normalize=args.normalize,
+        fine_tuning=args.fine_tuning,
         zip=args.zip,
         model_size=args.model_size,
+        model_path=args.model_path,
         nl_path=args.nl_path,
         render_mode=args.render_mode,
         args=vars(args),

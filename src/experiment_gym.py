@@ -39,6 +39,7 @@ class Experiment:
         agent: str,
         train_episodes: int,
         args,
+        model_path: str,
         eval_episodes: int = 50,
         document: bool = True,
         wandb_project: str = None,
@@ -51,6 +52,7 @@ class Experiment:
         eval: bool = False,
         early_stopping: bool = False,
         normalize: bool = False,
+        fine_tuning: bool = False,
         zip: bool = False,
         test: bool = False,
         model_size: str = "training",
@@ -74,8 +76,10 @@ class Experiment:
         :param eval: Whether to use one core for evaluation (necessary for evaluation phase).
         :param early_stopping: Whether to use early stopping, if no improvements are made after x episodes.
         :param normalize: Whether to normalize states and rewards (only during training).
+        :param fine_tuning: Whether to finetune trained model on eval simualtion.
         :param zip: Whether to zip the experiment directory.
         :param test: Whether to run in test mode.
+        :param model_path: Path to model.
         :param model_size: Model size to run experiments with, either "training" or "evaluation".
         :param nl_path: Path to NetLogo directory (for Linux users).
         :param render_mode: Whether NetLogo UI is shown during episodes (value "human" or None (default)).
@@ -86,6 +90,7 @@ class Experiment:
         self.eval = eval
         self.early_stopping = early_stopping
         self.normalize = normalize
+        self.fine_tuning = fine_tuning
         self.zip = zip
         self.document = document
         self.num_parallel = num_parallel
@@ -118,6 +123,7 @@ class Experiment:
             "group_pricing": group_pricing,
             "model_size": model_size,
             "nl_path": nl_path,
+            "model_path": model_path,
             "render_mode": render_mode,
             "test": test,
         }
@@ -208,19 +214,45 @@ class Experiment:
         """
         print(f"Training for {self.train_episodes} episodes")
 
-        # Almost infinite number of timesteps, but the training will stop early as soon as the max number of episodes is reached
         self.model.learn(
             total_timesteps=self.train_episodes * 24,
             progress_bar=True,
             callback=self.callbacks,
+            tb_log_name="training",
         )
         if self.normalize:
             self.venv.save(str(self.outpath / "log" / "norm_stats.pkl"))
-            print(self.venv.get_original_obs())
-            print(self.venv.normalize_obs(self.venv.get_original_obs()))
         self.venv.close()
 
-        # # Saving results
+        if self.fine_tuning:
+            print(f"Fine tuning for {self.train_episodes / 10} episodes")
+            self.env_kwargs["model_size"] = "evaluation"
+            self.venv = make_vec_env(
+                ParkingEnvironment,
+                env_kwargs=self.env_kwargs,
+                n_envs=self.num_parallel,
+                seed=SEED,
+                monitor_dir=str(self.outpath / "log"),
+                vec_env_cls=SubprocVecEnv,
+                vec_env_kwargs={
+                    "start_method": "spawn"
+                },  # Jpype can only handle spawn processes without pipe errors
+            )
+            self.venv = VecNormalize.load(
+                str(self.outpath / "log" / "norm_stats.pkl"), self.venv
+            )
+            self.model.set_env(self.venv)
+            self.model.learn(
+                total_timesteps=(self.train_episodes / 10) * 24,
+                progress_bar=True,
+                callback=self.callbacks,
+                tb_log_name="fine_tuning",
+            )
+            if self.normalize:
+                self.venv.save(str(self.outpath / "log" / "norm_stats.pkl"))
+            self.venv.close()
+
+        # Saving results
         self.save_results()
 
         if self.eval:
@@ -238,7 +270,7 @@ class Experiment:
 
             best_model_path = self.outpath / "log" / "eval" / "model" / "best_model.zip"
 
-            if best_model_path.is_file():
+            if best_model_path.is_file() and not self.fine_tuning:
                 self.model.load(best_model_path)
                 print("Best eval model loaded!")
 
@@ -250,8 +282,6 @@ class Experiment:
                 eval_env.training = False
                 # reward normalization is not needed at test time
                 eval_env.norm_reward = False
-                print(eval_env.get_original_obs())
-                print(eval_env.normalize_obs(eval_env.get_original_obs()))
             returns = evaluate_policy(
                 model=self.model,
                 env=eval_env,
