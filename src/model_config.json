@@ -1,20 +1,20 @@
 {
   "training": {
-    "num_cars": 233,
+    "num_cars_mean": 359,
     "max_x_cor": 28,
     "max_y_cor": 30,
     "num_garages": 1,
-    "lot_distribution_percentage": 0.897564646038223,
-    "target_start_occupancy": 0.4213133066426278 ,
-    "demand_curve_intercept" : 0.23786271472969064
+    "lot_distribution_percentage": 0.601911619673578,
+    "target_start_occupancy": 0.51117522473728 ,
+    "demand_curve_intercept" : 0.24628664886969504
   },
   "evaluation": {
-    "num_cars": 670,
+    "num_cars_mean": 800,
     "max_x_cor": 40,
     "max_y_cor": 50,
     "num_garages": 2,
-    "lot_distribution_percentage": 0.5136166541938596,
-    "target_start_occupancy": 0.5093924771636168 ,
-    "demand_curve_intercept" : 0.17458501429258358
+    "lot_distribution_percentage": 0.6198042099151186,
+    "target_start_occupancy": 0.5974406130228084,
+    "demand_curve_intercept" : 0.24628664886969504
   }
 }
