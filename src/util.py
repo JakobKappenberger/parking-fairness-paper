@@ -62,7 +62,30 @@ def occupancy_reward_function(
             reward += actual_distance / max_distance
     return reward / len(cpz_occupancies)
 
+def occupancy_reward_function_new(
+    colours: List[str], current_state: Dict[str, float], global_mode=False
+):
+    """
+    Rewards occupancy rates between 75% and 90%. Punishes deviations exponentially.
+    :param current_state: State dictionary.
+    :param colours: Colours of different CPZs.
+    :param global_mode: Whether to use the global occupancies or the one of the individual CPZs.
+    :return: reward
+    """
+    reward = 0
+    if global_mode:
+        cpz_occupancies = [current_state["overall_occupancy"]]
+    else:
+        cpz_occupancies = [current_state[f"{c}-lot occupancy"] for c in colours]
 
+    for val in cpz_occupancies:
+        if 0.75 <= val <= 0.9:
+            reward += 0
+        elif val <= 0.75:
+            reward -= abs(75 - val * 100)
+        elif val >= 0.9:
+            reward -= abs(90 - val * 100)
+    return reward
 def n_cars_reward_function(colours: List[str], current_state: Dict[str, float]):
     """
     Minimizes the number of cars in the simulation.
@@ -101,8 +124,8 @@ def composite_reward_function(colours: List[str], current_state: Dict[str, float
     :return: reward
     """
     return (
-        0.5 * occupancy_reward_function(colours, current_state)
-        + 0.5 * intergroup_outcome_reward_function(colours, current_state)
+        occupancy_reward_function_new(colours, current_state)
+        + equity_reward_function(colours, current_state)
     )
 
 
@@ -130,6 +153,17 @@ def intergroup_outcome_reward_function(
     return optimize_attr(
         current_state, "intergroup_outcome_divergence", mode="min", power=2
     )
+
+def equity_reward_function(
+    colours: List[str], current_state: Dict[str, float]
+):
+    """
+    Minimizes the differences between the groups.
+     :param colours: Colours of different CPZs (only present to be able to use one call in custom_environment.py).
+     :param current_state:State dictionary.
+     :return: reward
+    """
+    return -current_state["intergroup_outcome_abs_dif"]
 
 
 def composite_outcome_reward_function(
@@ -187,7 +221,7 @@ def compute_jenson_shannon(nl, intergroup=False):
         for group in [0, 1, 2]:
             group_average = np.average(nl.report(f"get-outcomes {group}"))
             outcome_distro.append(group_average)
-        outcome_distro = np.asarray(outcome_distro)
+        outcome_distro = abs(np.asarray(outcome_distro))
         outcome_distro = (outcome_distro + 2 * abs(np.min(outcome_distro))) ** 5
     else:
         outcome_distro = np.array(nl.report('get-outcomes "all"'))
@@ -1137,14 +1171,14 @@ def plot_space_attributes_grouped(
             yerr=error_dict[group_name],
         )
         bar_labels = [
-            f"{values[i]} \u00B1 {error_dict[group_name][i]}"
+            f"{values[i]}\n\u00B1 {error_dict[group_name][i]}"
             for i in range(len(["egress", "access", "search-time"]))
         ]
         ax.bar_label(
             rects,
             labels=bar_labels,
             padding=3,
-            fontsize=15 if group == "income-group" else 12,
+            fontsize=25 #if group == "income-group" else 12,
         )
         multiplier += 1
 
@@ -1155,7 +1189,7 @@ def plot_space_attributes_grouped(
     else:
         ax.set_xticks(ticks=(x + 1.5 * width))
     ax.set_xticklabels(["Egress", "Access", "Search"], fontsize=30)
-    ax.tick_params(axis="both", labelsize=25)
+    ax.tick_params(axis="both", labelsize=30)
     y_bottom, y_top = ax.get_ylim()
     ax.set_ylim(y_bottom, y_top + 5)
     ax.legend(loc="upper left", fontsize=25)
@@ -1297,7 +1331,7 @@ def plot_space_type_grouped(
         label="Curb",
     )
 
-    ax.bar_label(rect, labels=bar_labels, padding=3, fontsize=15)
+    ax.bar_label(rect, labels=bar_labels, padding=3, fontsize=25)
 
     # Add some text for labels, title and custom x-axis tick labels, etc.
     # ax.set_ylabel('Average Fee Paid in €', fontsize=30)
@@ -1312,7 +1346,7 @@ def plot_space_type_grouped(
             labels = ["Job / Education", "Doctor", "Meeting a Friend", "Shopping"]
 
     ax.set_xticklabels(labels, fontsize=30)
-    ax.tick_params(axis="both", labelsize=25)
+    ax.tick_params(axis="both", labelsize=30)
 
     ax.legend(loc="best", fontsize=25)
     # ax.set_ylim(0, 250)

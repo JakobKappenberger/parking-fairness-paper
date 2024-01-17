@@ -3,10 +3,12 @@ import platform
 from argparse import ArgumentParser
 from datetime import datetime
 from pathlib import Path
+import shutil
+
 
 import pandas as pd
 import numpy as np
-import pyNetLogo
+import pynetlogo
 from tqdm import trange
 
 from src.util import (
@@ -25,14 +27,16 @@ def run_baseline(
     nl_path: str = None,
     gui: bool = False,
     static: bool = False,
+    zip: bool = False
 ):
     """
     Runs baseline experiments and save results.
     :param num_episodes: Number of episodes to run.
     :param model_size: Model size to run experiments with, either "training" or "evaluation".
     :param nl_path: Path to NetLogo Installation (for Linux users)
-    :param gui: Whether or not NetLogo UI is shown during episodes.
+    :param gui: Whether NetLogo UI is shown during episodes.
     :param static: Use static baseline.
+    :param zip: Whether directory should be zipped after running the script.
     :return:
     """
 
@@ -46,9 +50,9 @@ def run_baseline(
     outpath.mkdir(parents=True, exist_ok=True)
     # Connect to NetLogo
     if platform.system() == "Linux":
-        nl = pyNetLogo.NetLogoLink(gui=gui, netlogo_home=nl_path, netlogo_version="6.2")
+        nl = pynetlogo.NetLogoLink(gui=gui, netlogo_home=nl_path)
     else:
-        nl = pyNetLogo.NetLogoLink(gui=gui)
+        nl = pynetlogo.NetLogoLink(gui=gui)
     nl.load_model("../src/Model.nlogo")
     # Load model parameters
     with open("../src/model_config.json", "r") as fp:
@@ -58,7 +62,7 @@ def run_baseline(
     max_x_cor = model_config[model_size]["max_x_cor"]
     max_y_cor = model_config[model_size]["max_y_cor"]
     nl.command(f"resize-world {-max_x_cor} {max_x_cor} {-max_y_cor} {max_y_cor}")
-    nl.command(f'set num-cars {model_config[model_size]["num_cars"]}')
+    nl.command(f'set num-cars-mean {model_config[model_size]["num_cars_mean"]}')
     nl.command(f'set num-garages {model_config[model_size]["num_garages"]}')
     nl.command(
         f'set demand-curve-intercept {model_config[model_size]["demand_curve_intercept"]}'
@@ -90,11 +94,8 @@ def run_baseline(
         if static:
             # Turn dynamic baseline pricing mechanism off
             nl.command("set dynamic-pricing-baseline false")
-            for c in COLOURS:
-                if c in ["yellow", "green"]:
-                    nl.command(f"change-fee-free {c}-lot 3.6")
-                else:
-                    nl.command(f"change-fee-free {c}-lot 1.8")
+        for c in COLOURS:
+            nl.command(f"change-fee-free {c}-lot 3.5")
         nl.command("ask one-of cars [record-data]")
         for _ in range(24):
             nl.repeat_command("go", 900)
@@ -122,6 +123,10 @@ def run_baseline(
     print(np.var(share_cruising_counter))
     print(f"Traffic Counter: {np.mean(traffic_counter)}")
 
+    if zip:
+        shutil.make_archive(str(outpath), "zip", outpath)
+        print("directory zipped")
+
 
 if __name__ == "__main__":
     parser = ArgumentParser()
@@ -143,6 +148,8 @@ if __name__ == "__main__":
     )
     add_bool_arg(parser, "gui", default=False)
     add_bool_arg(parser, "static", default=False)
+    add_bool_arg(parser, "zip", default=False)
+
 
     args = parser.parse_args()
     print(f" Baseline called with arguments: {vars(args)}")
@@ -153,4 +160,5 @@ if __name__ == "__main__":
         nl_path=args.nl_path,
         gui=args.gui,
         static=args.static,
+        zip=args.zip
     )

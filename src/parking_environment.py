@@ -10,12 +10,14 @@ import gymnasium as gym
 from gymnasium import spaces
 from src.util import (
     occupancy_reward_function,
+    occupancy_reward_function_new,
     n_cars_reward_function,
     social_reward_function,
     speed_reward_function,
     composite_reward_function,
     glob_outcome_reward_function,
     intergroup_outcome_reward_function,
+    equity_reward_function,
     document_episode,
     compute_jenson_shannon,
 )
@@ -24,12 +26,14 @@ import time
 COLOURS = ["yellow", "green", "teal", "blue"]
 REWARD_FUNCTIONS = {
     "occupancy": occupancy_reward_function,
+    "occupancy_test": occupancy_reward_function_new,
     "n_cars": n_cars_reward_function,
     "social": social_reward_function,
     "speed": speed_reward_function,
     "composite": composite_reward_function,
     "global_outcome": glob_outcome_reward_function,
     "intergroup_outcome": intergroup_outcome_reward_function,
+    "equity": equity_reward_function
 }
 
 
@@ -40,6 +44,7 @@ class ParkingEnvironment(gym.Env):
         self,
         timestamp: str,
         reward_key: str,
+        model_path : str = str(Path(__file__).with_name("Model.nlogo")),
         document: bool = False,
         adjust_free: bool = False,
         group_pricing: bool = False,
@@ -53,6 +58,7 @@ class ParkingEnvironment(gym.Env):
         Wrapper-Class to interact with NetLogo parking simulations.
 
         :param timestamp: Timestamp of episode.
+        :param model_path: Path of Simulation.
         :param reward_key: Key to choose reward function
         :param document: Boolean to control whether individual episode results are saved.
         :param adjust_free: Boolean to control whether prices are adjusted freely or incrementally
@@ -99,7 +105,8 @@ class ParkingEnvironment(gym.Env):
             self.nl = pynetlogo.NetLogoLink(
                 gui=True if render_mode is not None else False,
             )
-        self.nl.load_model(str(Path(__file__).with_name("Model.nlogo")))
+        print(model_path)
+        self.nl.load_model(model_path)
         # Set model size
         self.set_model_size(model_config, model_size)
         self.nl.command("setup")
@@ -159,13 +166,11 @@ class ParkingEnvironment(gym.Env):
         return spaces.MultiDiscrete(actions)
 
     def define_state_space(self):
-        states_num = 12
+        states_num = 10
         if self.n_garages > 0:
             states_num += 1
 
-        return spaces.Box(
-            low=-np.inf, high=np.inf, shape=(states_num,), dtype=np.float32
-        )
+        return spaces.Box(low=0.0, high=1.0, shape=(states_num,), dtype=np.float32)
 
     def set_model_size(self, model_config, model_size):
         """
@@ -234,42 +239,43 @@ class ParkingEnvironment(gym.Env):
         self.current_state["intergroup_outcome_divergence"] = compute_jenson_shannon(
             self.nl, intergroup=True
         )
+        group_averages = []
         for group in [0, 1, 2]:
-            group_average = np.average(self.nl.report(f"get-outcomes {group}"))
-            self.current_state[f"group_outcome_{group}"] = float(group_average)
+            group_averages.append(np.average(self.nl.report(f"get-outcomes {group}")))
+            #self.current_state[f"group_outcome_{group}"] = float(group_average)
+        self.current_state["intergroup_outcome_abs_dif"] = abs(np.min(group_averages) - np.max(group_averages))
+        # self.current_state["global_outcome"] = np.average(
+        #     self.nl.report('get-outcomes "all"')
+        # )
 
-        self.current_state["global_outcome"] = np.average(
-            self.nl.report('get-outcomes "all"')
-        )
-
-        self.current_state["low_income_outcome"] = np.average(
-            self.nl.report(f"get-outcomes 0")
-        ) - self.nl.report("min-util")
+        # self.current_state["low_income_outcome"] = np.average(
+        #     self.nl.report(f"get-outcomes 0")
+        # ) - self.nl.report("min-util")
 
         state = []
         state.append(float(self.current_state["ticks"]))
-        state.append(np.around(self.current_state["n_cars"], 4))
+        state.append(np.around(self.current_state["n_cars"], 2))
         # state.append(np.around(self.current_state["normalized_share_low"], 2))
         state.append(
-            np.around(self.current_state["mean_speed"], 4)
+            np.around(self.current_state["mean_speed"], 2)
             if self.current_state["mean_speed"] <= 1.0
             else 1.0
         )
 
         for key in sorted(self.current_state.keys()):
             if "occupancy" in key:
-                state.append(np.around(self.current_state[key], 4))
+                state.append(np.around(self.current_state[key], 2))
             # elif "fees" in key:
             #     for fee in self.current_state[key]:
             #         state.append(np.around(fee, 2) / 10)
             # elif "fee" in key:
             #     state.append(np.around(self.current_state[key], 2) / 10)
 
-        # state.append(float(self.current_state["global_outcome_divergence"]))
-        # state.append(float(self.current_state["intergroup_outcome_divergence"]))
-        for group in [0, 1, 2]:
-            state.append(np.around(self.current_state[f"group_outcome_{group}"], 4))
-        state.append(np.around(self.current_state["global_outcome"], 4))
+        state.append(float(self.current_state["global_outcome_divergence"]))
+        state.append(float(self.current_state["intergroup_outcome_divergence"]))
+        # for group in [0, 1, 2]:
+        #     state.append(np.around(self.current_state[f"group_outcome_{group}"], 2))
+        # state.append(np.around(self.current_state["global_outcome"], 2))
 
         return np.array(state, dtype=np.float32)
 
