@@ -1095,7 +1095,7 @@ to-report compute-utility [parking-lot count-passed-spots] ;; polak: parsing the
   let utility 0
   ifelse use-synthetic-population
   [
-    set utility report-utility access search egress price garage traffic
+    set utility report-utility access search egress price garage traffic (who * lotID)
     ;if length remove-duplicates [lot-id] of lots-checked > 0 [
       ;show temp-utility-value
     ;]
@@ -1150,7 +1150,7 @@ to-report compute-utility [parking-lot count-passed-spots] ;; polak: parsing the
   report utility
 end
 
-to-report report-utility [access search egress price garage traffic]
+to-report report-utility [access search egress price garage traffic seed]
   let access-w item 0 logit-weights
   let search-w item 1 logit-weights
   let egress-w item 2 logit-weights
@@ -1191,7 +1191,9 @@ to-report report-utility [access search egress price garage traffic]
   (type-w * garage) + (type-strategy-interaction-w * garage) + (type-purpose-interaction-w * garage) +
   (fee-w * price) + (fee-strategy-interaction-w * price) + (fee-purpose-interaction-w * price) + (income-fee-interaction-w * price) + ;((income-fee-interaction-6-w * income-interval-survey) ^ 6) +
   (gender-w * female)
-  report utility
+  random-seed seed ; make sure that individual error terms stay constant per alternative
+  let residual ((0) - (1 * ln(random-exponential 10)))
+  report utility + residual
 end
 
 ;; Determine parking space that maximizes utility
@@ -2077,7 +2079,7 @@ to document-turtle;;
   let checked-blocks length remove-duplicates [lot-id] of lots-checked
   let final-outcome 0
   ifelse wants-to-park and reinitialize? [
-    set final-outcome report-utility final-access converted-search-time final-egress price-paid garage 0
+    set final-outcome report-utility final-access converted-search-time final-egress price-paid garage 0 (who * item 0 fav-lot-id)
   ]
   [
     set final-outcome outcome
@@ -3415,7 +3417,7 @@ min-util
 min-util
 -100
 0
--9.359152772625986
+-11.15008763335868
 0.5
 1
 NIL
@@ -3474,6 +3476,17 @@ use-synthetic-population
 0
 1
 -1000
+
+INPUTBOX
+20
+1155
+237
+1215
+model-version
+0.2
+1
+0
+String
 
 @#$#@#$#@
 # WHAT IS IT?
