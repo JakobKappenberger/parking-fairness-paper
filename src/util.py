@@ -784,7 +784,7 @@ def plot_social(data_df, outpath):
     # Save plot with three variants of legend location
     for loc in ["lower right", "right", "upper right"]:
         fig, ax = plt.subplots(1, 1, figsize=(20, 8), dpi=300)
-        color_list = [cm.bamako(0), cm.bamako(1.0 * 1 / 2), cm.bamako(1.0)]
+        color_list = [cm.batlowS(0), cm.batlowS(1.0 * 1 / 2), cm.batlowS(1.0)]
         ax.plot(
             data_df.x,
             data_df.low_income / 100,
@@ -828,17 +828,17 @@ def plot_speed(data_df, outpath):
     :return:
     """
     fig, ax = plt.subplots(1, 1, figsize=(20, 8), dpi=300)
-    ax.plot(data_df.x, data_df.average_speed, linewidth=3, color=cm.bamako(0))
+    ax.plot(data_df.x, data_df.average_speed * 30, linewidth=3, color=cm.bamako(0))
     ax.plot(
         data_df.x,
-        data_df.average_speed.rolling(50).mean(),
+        data_df.average_speed.rolling(50).mean() * 30,
         linewidth=3,
         color=cm.bamako(1.0),
     )
 
-    ax.set_ylim(bottom=0, top=1.01)
+    ax.set_ylim(bottom=0, top=30)
 
-    ax.set_ylabel("Average Normalized Speed", fontsize=30)
+    ax.set_ylabel("Average Speed in km/h", fontsize=30)
     ax.grid(True)
     ax.tick_params(axis="both", labelsize=25)
     ax.set_xlabel("Time of Day", fontsize=30)
@@ -923,7 +923,7 @@ def plot_share_yellow(data_df, outpath):
     # Save plot with three variants of legend location
     for loc in ["lower right", "right", "upper right"]:
         fig, ax = plt.subplots(1, 1, figsize=(20, 8), dpi=300)
-        color_list = [cm.bamako(0), cm.bamako(1.0 * 1 / 2), cm.bamako(1.0)]
+        color_list = [cm.batlowS(0), cm.batlowS(1.0 * 1 / 2), cm.batlowS(1.0)]
         ax.plot(
             data_df.x,
             data_df.share_y_low / 100,
@@ -969,7 +969,7 @@ def plot_share_parked(data_df, outpath):
     # Save plot with three variants of legend location
     for loc in ["lower right", "right", "upper right"]:
         fig, ax = plt.subplots(1, 1, figsize=(20, 8), dpi=300)
-        color_list = [cm.bamako(0), cm.bamako(1.0 * 1 / 2), cm.bamako(1.0)]
+        color_list = [cm.batlowS(0), cm.batlowS(1.0 * 1 / 2), cm.batlowS(1.0)]
         ax.plot(
             data_df.x,
             data_df.share_p_low / 100,
@@ -1015,7 +1015,7 @@ def plot_share_vanished(data_df, outpath):
     # Save plot with three variants of legend location
     for loc in ["lower right", "right", "upper right"]:
         fig, ax = plt.subplots(1, 1, figsize=(20, 8), dpi=300)
-        color_list = [cm.bamako(0), cm.bamako(1.0 * 1 / 2), cm.bamako(1.0)]
+        color_list = [cm.batlowS(0), cm.batlowS(1.0 * 1 / 2), cm.batlowS(1.0)]
         ax.plot(
             data_df.x,
             data_df.share_v_low / 100,
@@ -1061,7 +1061,7 @@ def plot_outcomes(data_df, outpath):
     # Save plot with three variants of legend location
     for loc in ["lower right", "right", "upper right"]:
         fig, ax = plt.subplots(1, 1, figsize=(20, 8), dpi=300)
-        color_list = [cm.bamako(0), cm.bamako(1.0 * 1 / 2), cm.bamako(1.0)]
+        color_list = [cm.batlowS(0), cm.batlowS(1.0 * 1 / 2), cm.batlowS(1.0)]
         ax.plot(
             data_df.x,
             data_df.low_outcome,
@@ -1142,7 +1142,7 @@ def plot_space_attributes_grouped(
             error_dict[g].append(errors[i])
     if group == "income-group":
         labels = ["Low Income", "Middle Income", "High Income"]
-        color_list = [cm.bamako(0), cm.bamako(1.0 * 1 / 2), cm.bamako(1.0)]
+        color_list = [cm.batlowS(0), cm.batlowS(1.0 * 1 / 2), cm.batlowS(1.0)]
     else:
         if group == "parking-strategy":
             labels = ["Close to Goal", "Car Park", "En Route", "Other"]
@@ -1233,7 +1233,7 @@ def plot_average_attribute_grouped(
 
     if group == "income-group":
         labels = ["Low Income", "Middle Income", "High Income"]
-        color_list = [cm.bamako(0), cm.bamako(1.0 * 1 / 2), cm.bamako(1.0)]
+        color_list = [cm.batlowS(0), cm.batlowS(1.0 * 1 / 2), cm.batlowS(1.0)]
     else:
         if group == "parking-strategy":
             labels = ["Close to Goal", "Car Park", "En Route", "Other"]
