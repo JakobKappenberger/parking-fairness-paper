@@ -62,6 +62,7 @@ def occupancy_reward_function(
             reward += actual_distance / max_distance
     return reward / len(cpz_occupancies)
 
+
 def occupancy_reward_function_new(
     colours: List[str], current_state: Dict[str, float], global_mode=False
 ):
@@ -86,6 +87,8 @@ def occupancy_reward_function_new(
         elif val >= 0.9:
             reward -= abs(90 - val * 100)
     return reward
+
+
 def n_cars_reward_function(colours: List[str], current_state: Dict[str, float]):
     """
     Minimizes the number of cars in the simulation.
@@ -123,10 +126,9 @@ def composite_reward_function(colours: List[str], current_state: Dict[str, float
     :param current_state:State dictionary.
     :return: reward
     """
-    return (
-        occupancy_reward_function_new(colours, current_state)
-        + equity_reward_function(colours, current_state)
-    )
+    return occupancy_reward_function_new(
+        colours, current_state
+    ) + equity_reward_function(colours, current_state)
 
 
 def glob_outcome_reward_function(colours: List[str], current_state: Dict[str, float]):
@@ -154,9 +156,8 @@ def intergroup_outcome_reward_function(
         current_state, "intergroup_outcome_divergence", mode="min", power=2
     )
 
-def equity_reward_function(
-    colours: List[str], current_state: Dict[str, float]
-):
+
+def equity_reward_function(colours: List[str], current_state: Dict[str, float]):
     """
     Minimizes the differences between the groups.
      :param colours: Colours of different CPZs (only present to be able to use one call in custom_environment.py).
@@ -661,7 +662,7 @@ def plot_group_fees(data_df, outpath):
             # Save plot with three variants of legend location
             for loc in ["lower right", "right", "upper right"]:
                 fig, ax = plt.subplots(1, 1, figsize=(20, 8), dpi=300)
-                color_list = [cm.bamako(0), cm.bamako(1.0 * 1 / 2), cm.bamako(1.0)]
+                color_list = [cm.batlowS(0), cm.batlowS(1.0 * 1 / 2), cm.batlowS(1.0)]
                 ax.plot(
                     data_df.x,
                     data_df[f"fee_{color}_low"],
@@ -828,12 +829,30 @@ def plot_speed(data_df, outpath):
     :return:
     """
     fig, ax = plt.subplots(1, 1, figsize=(20, 8), dpi=300)
-    ax.plot(data_df.x, data_df.average_speed * 30, linewidth=3, color=cm.bamako(0))
     ax.plot(
         data_df.x,
-        data_df.average_speed.rolling(50).mean() * 30,
+        data_df.average_speed.rolling(150).mean() * 30,
         linewidth=3,
-        color=cm.bamako(1.0),
+        color=cm.batlowS(0),
+        label="Overall",
+        alpha=0.9
+    )
+    ax.plot(
+        data_df.x,
+        data_df.through_speed.rolling(150).mean() * 30,
+        linewidth=3,
+        color=cm.batlowS(0.5),
+        label="Through Traffic",
+        alpha=0.9
+
+    )
+    ax.plot(
+        data_df.x,
+        data_df.cruising_speed.rolling(150).mean() * 30,
+        linewidth=3,
+        color=cm.batlowS(1.0),
+        label="Cruising Traffic",
+        alpha=0.9
     )
 
     ax.set_ylim(bottom=0, top=30)
@@ -844,7 +863,7 @@ def plot_speed(data_df, outpath):
     ax.set_xlabel("Time of Day", fontsize=30)
     ax.set_xticks(ticks=np.arange(0, max(data_df["x"]) + 1, 2))
     ax.set_xticklabels(labels=X_LABEL)
-
+    ax.legend(fontsize=25, loc="best")
     fig.savefig(str(outpath / "speed.pdf"), bbox_inches="tight")
     plt.close(fig)
 
@@ -1178,7 +1197,7 @@ def plot_space_attributes_grouped(
             rects,
             labels=bar_labels,
             padding=3,
-            fontsize=25 #if group == "income-group" else 12,
+            fontsize=25,  # if group == "income-group" else 12,
         )
         multiplier += 1
 
