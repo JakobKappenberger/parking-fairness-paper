@@ -19,6 +19,8 @@ globals
   phase                    ;; keeps track of the phase (traffic lights)
   num-cars
   num-cars-stopped         ;; the number of cars that are stopped during a single pass thru the go procedure
+  current-volume
+  drawn-num-cars
   city-income              ;; money the city currently makes
   city-loss                ;; money the city loses because people do not buy tickets
   total-fines              ;; sum of all fines collected by the city
@@ -85,6 +87,7 @@ globals
   road-space-dict                  ;; dict used to look-up patches between current street and parking space of choice
   synthetic-population            ;;list of turtles based on synthetic data
                                   ;;debugging
+  initial-social-distro
 ]
 
 nodes-own
@@ -95,6 +98,7 @@ cars-own
 [
   wait-time ;; time passed since a turtle has moved
 
+  time-in-sim ;;time after spawning
   speed         ;; the current speed of the car
   park-time     ;; the time the driver wants to stay in the parking-spot
   park          ;; the driver's probability to be searching for a parking space
@@ -102,6 +106,7 @@ cars-own
   paid?         ;; true if the car paid for its spot
   looks-for-parking? ;; whether the agent is currently looking for parking in the target street
   parked?       ;; true if the car is parked
+  searching? ;;true if agent is actually searching (after arrival in street of first parking alternative)
   time-parked     ;; time spent parking
   final-access
   computed-access
@@ -126,7 +131,7 @@ cars-own
   nav-hastarget?   ;; boolean to check if agent has objective
   nav-pathtofollow ;; list of nodes to follow
   income-group     ;; ordinial classification of income
-  search-time    ;; time to find a parking space
+  search-time    ;; time to find a parking space, after searching? is true
   reinitialize? ;; for agents who have left the map
   die?
   alternative? ;; boolean for compute-alterantive-route
@@ -184,6 +189,7 @@ patches-own
   gateway?        ;; true for gateways of garages
 
   service?                 ;; determines whether the parking spot is secure (1) or not (0)
+  goal-counter
 ]
 
 
@@ -206,20 +212,26 @@ to setup
   random-seed 68159
   setup-patches
   random-seed new-seed
-  ;; set demand appropriate for 8:00 A.M.
-  set parking-cars-percentage ((-5.58662028e-04 * 8 ^ 3 + 2.76514862e-02 * 8 ^ 2 + -4.09343614e-01 *  8 +  2.31844786e+00)  + demand-curve-intercept) * 100
 
   set-default-shape cars "car top"
 
   ; draw random number of num-cars in 10% interval around num-cars
   let std int (0.1 * num-cars-mean)
-  let drawn-num-cars int (random-normal num-cars-mean std)
+  set drawn-num-cars int (random-normal num-cars-mean std)
 
   while [drawn-num-cars > (num-cars-mean + std) or  drawn-num-cars < (num-cars-mean - std)]
   [
     set drawn-num-cars int (random-normal num-cars-mean std)
   ]
   set num-cars drawn-num-cars
+
+    ;; set demand appropriate for 8:00 A.M.
+  set parking-cars-percentage ((-5.58662028e-04 * 8 ^ 3 + 2.76514862e-02 * 8 ^ 2 + -4.09343614e-01 *  8 +  2.31844786e+00)  + demand-curve-intercept) * 100
+
+
+  set current-volume int((-3.18474354e-03 * 8 ^ 3  + 1.23733463e-01 * 8 ^ 2 +  -1.52611851e+00 * 8 +   6.77794542e+00) * drawn-num-cars)
+  set num-cars current-volume
+
 
   if (num-cars > count roads)
   [
@@ -287,6 +299,18 @@ to setup
   ]
   let end-time timer
   if debugging [show end-time - start-time]
+
+  let initial-low-share (count cars with [income-group = 0] / count cars) * 100
+  let initial-middle-share (count cars with [income-group = 1] / count cars) * 100
+  let initial-high-share (count cars with [income-group = 2] / count cars) * 100
+
+  set initial-social-distro (list initial-low-share initial-middle-share initial-high-share)
+  if show-goals [
+    ask patches [set goal-counter 0]
+    ask cars [ask nav-goal [set goal-counter goal-counter + 1]]
+    let max-goal-counter max [goal-counter] of patches
+    ask potential-goals [set pcolor 8.4 - (goal-counter / max-goal-counter) * 8.4]
+  ]
 end
 
 ;; identifies patches on which cars die
@@ -347,6 +371,7 @@ to setup-globals
 
   ;; don't make acceleration 0.1 since we could get a rounding error and end up on a patch boundary
   set acceleration 0.099
+  set initial-social-distro 0
 
   ;;debugging
 
@@ -725,6 +750,7 @@ to setup-cars  ;; turtle procedure
                ;show ""
   set speed 0
   set wait-time 0
+  set age 0
 
   ;; check whether agent is created at beginning of model (reinitialize? = 0) or recreated during run of simulation (reinitialize? = true)
   ifelse reinitialize? = 0 [
@@ -749,6 +775,12 @@ to setup-cars  ;; turtle procedure
       put-on-empty-road
     ]
     ;; income of recreated cars is based on the distro of the model
+    if ((max (list low-to-create middle-to-create high-to-create)) = 0) [
+      let rand-n random 100
+      if rand-n >= 100 - item 2 initial-social-distro [set low-to-create low-to-create + 1]
+      if rand-n < 100 - item 2 initial-social-distro and rand-n >= item 0 initial-social-distro [set middle-to-create middle-to-create + 1]
+      if rand-n < item 0 initial-social-distro [set high-to-create high-to-create + 1]
+    ]
     (ifelse
       low-to-create > 0 [
         set low-to-create low-to-create - 1
@@ -837,6 +869,7 @@ to setup-cars  ;; turtle procedure
 
   set park-time draw-park-duration
   set parked? false
+  set searching? false
   set reinitialize? true
   set die? false
   set wtp draw-wtp
@@ -881,7 +914,7 @@ to setup-cars  ;; turtle procedure
     let section [road-section] of patch-here
     set max-dist-parking-target table:get (table:get road-space-dict section) "max-dist-parking-target"
 
-    set max-dist-parking-target distance max-one-of lots [distance nav-goal]
+    ;set max-dist-parking-target distance max-one-of lots [distance nav-goal]
     ;; axhausen: setting up default strategy flag value i.e. no switch when the agent is initiated
     set switch-strategy-flag 0
     ;; polak: initializing variables for informed and uninformed agents that are selecting specific strategies
@@ -1102,7 +1135,7 @@ to-report compute-utility [parking-lot count-passed-spots] ;; polak: parsing the
     if utility > temp-utility-value [
       set temp-utility-value utility
       set computed-access access
-      set final-access search-time
+      set final-access 0
       set final-egress egress
       ifelse garage = 1 [
         set final-type "garage"
@@ -1205,7 +1238,7 @@ to-report find-favorite-space ;; polak: parsing the 'fuzzy-weight-list' weight v
   ;;print "lot-ids-checked"
   ;;print lot-ids-checked
 
-  if (search-time > temporal-resolution) [
+  if (time-in-sim > temporal-resolution) [
     set reinitialize? false
     set die? true
     set outcome min-util ;; cars will not find parking, get minimum utility
@@ -1316,35 +1349,15 @@ to set-navgoal
   (ifelse
     switch <= 39 [
       set nav-goal one-of potential-goals with [center-distance <= max-distance * 0.35]
-      if show-goals[
-        ask one-of potential-goals with [center-distance <= max-distance * 0.35][
-          set pcolor cyan
-        ]
-      ]
     ]
     switch > 39 and switch <= 65 [
       set nav-goal one-of potential-goals with [center-distance <= max-distance * 0.5 and center-distance > max-distance * 0.35]
-      if show-goals[
-        ask one-of potential-goals with [center-distance <= max-distance * 0.5 and center-distance > max-distance * 0.35][
-          set pcolor pink
-        ]
-      ]
     ]
     switch > 65 and switch <= 80 [
       set nav-goal one-of potential-goals with [center-distance <= max-distance * 0.6 and center-distance > max-distance * 0.5]
-      if show-goals[
-        ask one-of potential-goals with [center-distance <= max-distance * 0.6 and center-distance > max-distance * 0.5][
-          set pcolor violet
-        ]
-      ]
     ]
     switch > 80[
       set nav-goal one-of potential-goals with [center-distance <= max-distance and center-distance > max-distance * 0.6]
-      if show-goals[
-        ask one-of potential-goals with [center-distance <= max-distance and center-distance > max-distance * 0.6][
-          set pcolor turquoise
-        ]
-      ]
   ])
 end
 
@@ -1426,6 +1439,7 @@ to go-cars
       ;==================================================
       if looks-for-parking?;park <= parking-cars-percentage and  ;; x% of cars look for parking
       [
+        if not searching? [set searching? true]
         park-car
         if member? patch-ahead 1 intersections [ ;;Dummy implementation
                                                  ;print self
@@ -1465,6 +1479,7 @@ to check-for-death
     if document-turtles [document-turtle]
     if not reinitialize? [
       update-vanished
+      set drawn-num-cars drawn-num-cars - 1
     ]
     die
   ]
@@ -1527,6 +1542,7 @@ to navigate-road
     if wants-to-park and not empty? nav-prklist[
       if [road-section] of patch-here = get-road-section first nav-prklist[
         set looks-for-parking? true
+        if speed > speed-limit / 2 [set speed speed-limit / 2]
       ]
     ]
     ;car currently has no target
@@ -1705,7 +1721,7 @@ to set-signals
     ]
   ]
 
-  if phase >= ticks-per-cycle - ticks-per-cycle * 0.2[
+  if phase >= ticks-per-cycle - int(3 * temporal-resolution / 3600) [
     ask intersections
     [
       set-signal-yellow
@@ -1839,9 +1855,17 @@ end
 
 ;; increase the speed of the turtle
 to speed-up  ;; turtle procedure
+  ifelse looks-for-parking?
+  [
+    ifelse speed > speed-limit / 2
+  [ set speed speed-limit / 2 ]
+  [ set speed speed + acceleration ]
+  ]
+  [
   ifelse speed > speed-limit
   [ set speed speed-limit ]
   [ set speed speed + acceleration ]
+  ]
 end
 
 ;; set the color of the turtle to a different color based on whether the car is paying for parking
@@ -2062,17 +2086,8 @@ end
 
 ;; document turtle in csv
 to document-turtle;;
-  ifelse search-time > final-access [
-    set final-access ((search-time - final-access) / temporal-resolution) * 60
-  ]
-  [
-    ifelse search-time = 0 [
-      set final-access computed-access
-    ]
-    [
-      set final-access ((search-time) / temporal-resolution) * 60
-    ]
-  ]
+
+  set final-access ((final-access) / temporal-resolution) * 60
   let converted-search-time (search-time / temporal-resolution) * 60
   let garage 0
   if final-type = "garage" [set garage 1]
@@ -2183,6 +2198,7 @@ to update-demand-curve
   if (ticks mod (temporal-resolution / 2) = 0) [ ;; update demand every half hour
     let x ticks / temporal-resolution + 8
     set parking-cars-percentage ((-5.58662028e-04 * x ^ 3 + 2.76514862e-02 * x ^ 2 + -4.09343614e-01 *  x +  2.31844786e+00)  + demand-curve-intercept) * 100
+    set current-volume int ((-3.18474354e-03 * x ^ 3  + 1.23733463e-01 * x ^ 2 +  -1.52611851e+00 * x +   6.77794542e+00) *  drawn-num-cars)
   ]
 end
 
@@ -2240,6 +2256,11 @@ end
 
 ;; create new cars to replace those that left the simulation after parking (or without wanting to park)
 to recreate-cars;;
+  ifelse count cars < current-volume [
+    set cars-to-create current-volume - count cars
+  ] [
+    set cars-to-create 0
+  ]
   create-cars cars-to-create
   [
     set reinitialize? true
@@ -2271,8 +2292,12 @@ end
 
 ;; update search-time only for those wanting to park right now
 to update-search-time
+  set time-in-sim time-in-sim + 1
   if not parked? and wants-to-park and not empty? nav-prklist
-  [set search-time search-time + 1]
+  [set final-access final-access + 1
+    if searching? [set search-time search-time + 1]
+  ]
+
 end
 
 
@@ -2503,10 +2528,10 @@ end
 
 to-report report-logit-weights []
   let weight-vector []
-  set weight-vector lput (random-normal -0.05 0.06)  weight-vector ;; access
+  set weight-vector lput -0.04 weight-vector ;; access
   set weight-vector lput 0 weight-vector ;; search
-  set weight-vector lput (random-normal -0.23 0.20)  weight-vector ;; egress
-  set weight-vector lput (random-normal -1.34  0.85)  weight-vector ;; fee
+  set weight-vector lput (random-normal -0.24 0.20)  weight-vector ;; egress
+  set weight-vector lput (random-normal -1.23  0.84)  weight-vector ;; fee
   set weight-vector lput 0 weight-vector ;; type-garage
   let access-strategy-interaction-weight 0
   let search-strategy-interaction-weight 0
@@ -2516,15 +2541,15 @@ to-report report-logit-weights []
   (ifelse
     parking-strategy = 4 [
       ;set search-strategy-interaction-weight random-normal -0.087 0.2
-      set type-strategy-interaction-weight 0.89
+      set type-strategy-interaction-weight 0.87
       set fee-strategy-interaction-weight 0.52
     ]
     parking-strategy = 5 [
       set egress-strategy-interaction-weight 0.10
     ]
     parking-strategy = 7[
-      set egress-strategy-interaction-weight 0.11
-      set search-strategy-interaction-weight -0.08
+      set egress-strategy-interaction-weight 0.12
+      set search-strategy-interaction-weight -0.09
     ]
   )
   set weight-vector lput access-strategy-interaction-weight weight-vector
@@ -2541,20 +2566,20 @@ to-report report-logit-weights []
   (ifelse
     purpose = 1 [ ;doctor
       set search-purpose-interaction-weight -0.07
-      set egress-purpose-interaction-weight -0.10
-      set fee-purpose-interaction-weight 0.67
+      set egress-purpose-interaction-weight -0.09
+      set fee-purpose-interaction-weight 0.68
     ]
     purpose = 2 [ ;meeting friends
-      set access-purpose-interaction-weight -0.07
+      set access-purpose-interaction-weight -0.08
       set egress-purpose-interaction-weight -0.09
-      set type-purpose-interaction-weight 0.40
+      set type-purpose-interaction-weight 0.35
       set fee-purpose-interaction-weight 0.24
 
     ]
     purpose = 3 [ ;shopping
-      set egress-purpose-interaction-weight -0.16
-      set type-purpose-interaction-weight 0.33
-      set fee-purpose-interaction-weight 0.51
+      set egress-purpose-interaction-weight -0.15
+      set type-purpose-interaction-weight 0.31
+      set fee-purpose-interaction-weight 0.52
     ]
   )
   set weight-vector lput access-purpose-interaction-weight weight-vector
@@ -2566,28 +2591,28 @@ to-report report-logit-weights []
   let income-fee-interaction 0
   (ifelse
     income-interval-survey = 2 [
-      set income-fee-interaction -0.85
+      set income-fee-interaction -1.01
     ]
     income-interval-survey = 3 [
-      set income-fee-interaction -0.65
+      set income-fee-interaction -0.74
     ]
     income-interval-survey = 4 [
-      set income-fee-interaction -0.78
+      set income-fee-interaction -0.86
     ]
     income-interval-survey = 5 [
-      set income-fee-interaction -0.68
+      set income-fee-interaction -0.75
     ]
     income-interval-survey = 6 [
-      set income-fee-interaction 0.64
+      set income-fee-interaction 0.74
     ]
     income-interval-survey = 7  [
-      set income-fee-interaction 0.57
+      set income-fee-interaction 0.67
     ]
   )
 
   set weight-vector lput income-fee-interaction weight-vector ;; income-fee-interaction
                                                               ;set weight-vector lput random-normal 0.1489018  0.8409924  weight-vector ;; ^6-income-fee-interaction
-  set weight-vector lput 0.21 weight-vector ;; gender
+  set weight-vector lput 0.16 weight-vector ;; gender
 
 
 
@@ -2653,7 +2678,7 @@ num-cars-mean
 num-cars-mean
 10
 1000
-791.0
+840.0
 5
 1
 NIL
@@ -2724,7 +2749,7 @@ ticks-per-cycle
 ticks-per-cycle
 1
 100
-20.0
+45.0
 1
 1
 NIL
@@ -3185,7 +3210,7 @@ temporal-resolution
 temporal-resolution
 0
 3600
-1800.0
+1900.0
 100
 1
 NIL
@@ -3236,7 +3261,7 @@ parking-cars-percentage
 parking-cars-percentage
 0
 100
-77.57332859433056
+72.73591064639997
 1
 1
 %
@@ -3293,7 +3318,7 @@ demand-curve-intercept
 demand-curve-intercept
 0
 0.25
-0.24837417947930585
+0.2
 0.01
 1
 NIL
@@ -3312,10 +3337,13 @@ NIL
 0.0
 100.0
 true
-false
+true
 "" ""
 PENS
-"default" 1.0 0 -16777216 true "" "plot parking-cars-percentage"
+"Overall Demand" 1.0 0 -16777216 true "" "plot parking-cars-percentage"
+"Share Cruising" 1.0 0 -2674135 true "" "plot share-cruising * 100"
+"Volume Distro" 1.0 0 -7500403 true "" "plot current-volume"
+"Actual Volume" 1.0 0 -955883 true "" "plot count cars"
 
 SWITCH
 140
@@ -3417,7 +3445,7 @@ min-util
 min-util
 -100
 0
--11.15008763335868
+-12.237654597521143
 0.5
 1
 NIL
@@ -3483,10 +3511,30 @@ INPUTBOX
 237
 1215
 model-version
-0.2
+0.3
 1
 0
 String
+
+PLOT
+2275
+955
+2720
+1275
+Crusing vs. Through Traffic Speeds
+NIL
+NIL
+0.0
+10.0
+0.0
+1.0
+true
+true
+"" ""
+PENS
+"Cruising Traffic" 1.0 0 -2674135 true "" "if count cars > 0 [plot mean [speed] of cars with [park <= parking-cars-percentage and not parked?]]"
+"Through Traffic" 1.0 0 -16777216 true "" "if count cars > 0 [plot mean [speed] of cars with [park > parking-cars-percentage and not parked?]]"
+"Share Cruising" 1.0 0 -7500403 true "" "plot share-cruising"
 
 @#$#@#$#@
 # WHAT IS IT?
