@@ -157,6 +157,8 @@ cars-own
 
   fav-lot-id                ;; current parking target according to maximum utility
   fav-lot-ids
+  circling?
+  circling-counter
 ]
 
 patches-own
@@ -876,13 +878,17 @@ to setup-cars  ;; turtle procedure
   set wtp-increased 0
 
   ;; designate parking offenders (right now 25%)
-  let offender-prob random 100
-  ifelse offender-prob >= 75  [
+  let random-draw random 100
+  ifelse random-draw >= 75  [
     set parking-offender? true
   ]
   [
     set parking-offender? false
   ]
+
+  set circling? False
+  if random-draw >= 90 [set circling? True]
+  set circling-counter 0
 
   set lots-checked no-patches
 
@@ -1848,7 +1854,7 @@ end
 
 ;; decrease the speed of the turtle
 to slow-down  ;; turtle procedure
-  ifelse speed <= 0  ;;if speed < 0
+  ifelse speed <= 0 or speed - acceleration <= 0  ;;if speed < 0
   [ set speed 0 ]
   [ set speed speed - acceleration ]
 end
@@ -1980,10 +1986,17 @@ to park-car ;;turtle procedure
         [
           if not member? current-space lots-checked
           [
-            let lot-identifier [lot-id] of current-space ;; value of lot-variable for current lot
-            let current-lot lots with [lot-id = lot-identifier]
-            set lots-checked (patch-set lots-checked current-lot)
-            update-wtp
+            ifelse not circling? or circling-counter > 1
+            [
+              let lot-identifier [lot-id] of current-space ;; value of lot-variable for current lot
+              let current-lot lots with [lot-id = lot-identifier]
+              set lots-checked (patch-set lots-checked current-lot)
+              update-wtp
+              set circling-counter 0
+            ]
+            [
+              set circling-counter circling-counter + 1
+            ]
           ]
           ;stop
         ]
@@ -2678,7 +2691,7 @@ num-cars-mean
 num-cars-mean
 10
 1000
-840.0
+800.0
 5
 1
 NIL
@@ -3014,7 +3027,7 @@ lot-distribution-percentage
 lot-distribution-percentage
 0
 1
-0.74018432269965
+0.6198042099151186
 0.05
 1
 NIL
@@ -3195,7 +3208,7 @@ target-start-occupancy
 target-start-occupancy
 0
 1
-0.8673100497987458
+0.5974406130228084
 0.05
 1
 NIL
@@ -3261,7 +3274,7 @@ parking-cars-percentage
 parking-cars-percentage
 0
 100
-72.73591064639997
+77.73591064639997
 1
 1
 %
@@ -3318,7 +3331,7 @@ demand-curve-intercept
 demand-curve-intercept
 0
 0.25
-0.2
+0.25
 0.01
 1
 NIL
@@ -3445,7 +3458,7 @@ min-util
 min-util
 -100
 0
--12.237654597521143
+-12.996333520472273
 0.5
 1
 NIL
@@ -3535,6 +3548,25 @@ PENS
 "Cruising Traffic" 1.0 0 -2674135 true "" "if count cars > 0 [plot mean [speed] of cars with [park <= parking-cars-percentage and not parked?]]"
 "Through Traffic" 1.0 0 -16777216 true "" "if count cars > 0 [plot mean [speed] of cars with [park > parking-cars-percentage and not parked?]]"
 "Share Cruising" 1.0 0 -7500403 true "" "plot share-cruising"
+
+PLOT
+2275
+1280
+2720
+1535
+Outcome for Circling
+NIL
+NIL
+0.0
+10.0
+0.0
+0.0
+true
+true
+"" ""
+PENS
+"Circling" 1.0 0 -2674135 true "" "if count cars with [circling?] > 0 [plot mean [outcome] of cars with [circling? and outcome != -99]]"
+"Non-Circling" 1.0 0 -16777216 true "" "if count cars with [not circling?] > 0 [plot mean [outcome] of cars with [not circling? and outcome != -99]]"
 
 @#$#@#$#@
 # WHAT IS IT?
