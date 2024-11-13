@@ -1386,7 +1386,11 @@ end
 
 ;; Run the simulation, is called at every timestep
 to go
-
+  if ticks > temporal-resolution * 12 [
+    stop
+    print ticks
+    print "stopped"
+  ]
   ;; have the intersections change their color
   set-signals
   set num-cars-stopped 0
@@ -2691,7 +2695,7 @@ num-cars-mean
 num-cars-mean
 10
 1000
-800.0
+798.0
 5
 1
 NIL
@@ -2872,7 +2876,7 @@ pop-median-income
 pop-median-income
 1000
 40000
-2956.0
+2964.0
 1
 1
 €
@@ -3027,7 +3031,7 @@ lot-distribution-percentage
 lot-distribution-percentage
 0
 1
-0.6198042099151186
+0.6112413713688924
 0.05
 1
 NIL
@@ -3208,7 +3212,7 @@ target-start-occupancy
 target-start-occupancy
 0
 1
-0.5974406130228084
+0.5702935914936343
 0.05
 1
 NIL
@@ -3223,7 +3227,7 @@ temporal-resolution
 temporal-resolution
 0
 3600
-1900.0
+1800.0
 100
 1
 NIL
@@ -3261,7 +3265,7 @@ SWITCH
 403
 dynamic-pricing-baseline
 dynamic-pricing-baseline
-0
+1
 1
 -1000
 
@@ -3274,7 +3278,7 @@ parking-cars-percentage
 parking-cars-percentage
 0
 100
-77.73591064639997
+67.73591064639997
 1
 1
 %
@@ -3331,7 +3335,7 @@ demand-curve-intercept
 demand-curve-intercept
 0
 0.25
-0.25
+0.15
 0.01
 1
 NIL
@@ -3458,7 +3462,7 @@ min-util
 min-util
 -100
 0
--12.996333520472273
+-10.489348472862105
 0.5
 1
 NIL
